@@ -12,12 +12,13 @@ struct LoginView: View {
     @State private var rememberPassword = false
     @State private var email = ""
     @State private var password = ""
-    @State private var isLoggedIn = false
-    @State private var errorMessage = ""
+    @StateObject private var viewModel = LoginViewModel()
+    @State private var showSignUp = false
     
     var body: some View {
-        if isLoggedIn {
+        if viewModel.isLoggedIn {
             //AlbumsView(isLoggedIn: $isLoggedIn)
+            Text("woohoo ure logged in")
         } else {
             VStack() {
                 Text("Log In")
@@ -31,6 +32,14 @@ struct LoginView: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 8)
+                
+                //error message
+                if !viewModel.errorMessage.isEmpty {
+                    Text(viewModel.errorMessage)
+                        .foregroundColor(.red)
+                        .font(.caption)
+                        .padding(.horizontal, 24)
+                }
                 
                 HStack() {
                     //Remember Password
@@ -50,24 +59,28 @@ struct LoginView: View {
                     
                     //Forgot Password
                     SecondaryButton(title: "Forgot Password") {
-                        print("hello")
+                        viewModel.forgotPassword(email: email)
                     }
                     .font(.subheadline)
                     .padding()
+                    
                 }
                 
                 //Login button
                 PrimaryButton(title: "Login") {
-                    print("hello")
+                    viewModel.login(email: email, password: password)
                 }
                 .padding(.horizontal, 50)
                 .padding(.vertical, 50)
                 
                 //Sign up
                 SecondaryButton(title: "Don't have an account? Sign up") {
-                    print("hello")
+                    showSignUp = true
                 }
                 .font(.subheadline)
+                .sheet(isPresented: $showSignUp) {
+                    SignUpView()
+                }
             }
         }
     }
