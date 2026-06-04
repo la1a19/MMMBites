@@ -7,31 +7,13 @@
 
 
 import Foundation
+import FirebaseFirestore
 
 struct User: Identifiable, Codable {
-    var id: String
-    var username: String
-    var email: String
-    var avatarURL: String?
-    var memoryCount: Int
-    var createdAt: Date
-    var updatedAt: Date
-
-    init(
-        id: String,
-        username: String,
-        email: String,
-        avatarURL: String? = nil,
-        memoryCount: Int = 0,
-        createdAt: Date = Date(),
-        updatedAt: Date = Date()
-    ) {
-        self.id = id
-        self.username = username
-        self.email = email
-        self.avatarURL = avatarURL
-        self.memoryCount = memoryCount
-        self.createdAt = createdAt
-        self.updatedAt = updatedAt
-    }
+    @DocumentID var id: String?           // Firestore doc ID — same as the Firebase Auth UID
+    var username: String                  // unique handle used to find/add friends
+    var displayName: String               // user-facing name (can have spaces / emoji)
+    var avatarURL: String?                // profile picture, Firebase Storage URL
+    var friendIDs: [String]               // UIDs of confirmed friends
+    @ServerTimestamp var createdAt: Date? // when the account was created (server time)
 }

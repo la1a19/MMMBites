@@ -11,6 +11,7 @@
 //
 
 import Foundation
+import FirebaseFirestore
 
 struct Album: Identifiable, Codable {
     var id: String = UUID().uuidString

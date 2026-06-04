@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import FirebaseFirestore
 
 struct Tag: Identifiable, Codable {
     var id: String = UUID().uuidString

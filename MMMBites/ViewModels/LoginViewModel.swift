@@ -9,50 +9,61 @@ import SwiftUI
 import FirebaseAuth
 import Combine
 
-class LoginViewModel : ObservableObject {
+@MainActor
+class LoginViewModel: ObservableObject {
     @Published var isLoggedIn = false
     @Published var errorMessage = ""
-    
-    func login(email: String, password: String) {
-        Auth.auth().signIn(withEmail: email, password: password) { [weak self] authResult, error in
-          guard let self = self else { return }
-          
-            if let error = error {
-                self.errorMessage = error.localizedDescription
-            } else {
-                self.isLoggedIn = true
+    @Published var passwordResetSent = false
+
+    private var authStateHandle: AuthStateDidChangeListenerHandle?
+
+    init() {
+        // Single source of truth: mirror Firebase's session state.
+        // Fires immediately with the current user, then on every change.
+        authStateHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
+            Task { @MainActor in
+                self?.isLoggedIn = (user != nil)
             }
         }
     }
-    
-    func signup(email: String, password: String) {
-        Auth.auth().createUser(withEmail: email, password: password) { [weak self] authResult, error in
-          guard let self = self else { return }
-            
-            if let error = error {
-                self.errorMessage = error.localizedDescription
-            } else {
-                self.isLoggedIn = true
-            }
+
+    deinit {
+        if let handle = authStateHandle {
+            Auth.auth().removeStateDidChangeListener(handle)
         }
     }
-    
-    func forgotPassword(email: String) {
-        Auth.auth().sendPasswordReset(withEmail: email) { [weak self] error in
-          guard let self = self else { return }
-            
-            if let error = error {
-                self.errorMessage = error.localizedDescription
-            }
+
+    func login(email: String, password: String) async {
+        errorMessage = ""
+        passwordResetSent = false
+        do {
+            try await Auth.auth().signIn(withEmail: email, password: password)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
-    
-    func rememberPassword(email: String, password: String) {
-        
+
+    func forgotPassword(email: String) async {
+        errorMessage = ""
+        passwordResetSent = false
+        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            errorMessage = "Enter your email first"
+            return
+        }
+        do {
+            try await Auth.auth().sendPasswordReset(withEmail: trimmed)
+            passwordResetSent = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
-    
+
     func logout() {
-        try? Auth.auth().signOut()
-        self.isLoggedIn = false
+        do {
+            try Auth.auth().signOut()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }

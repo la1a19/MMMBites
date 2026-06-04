@@ -15,8 +15,8 @@ struct SignUpView: View {
     @State private var confirmPassword = ""
     @State private var username = ""
     
-    @StateObject private var viewModel = LoginViewModel()
-    
+    @StateObject private var viewModel = SignUpViewModel()
+
     @Environment(\.dismiss) var dismiss
     
     
@@ -46,11 +46,17 @@ struct SignUpView: View {
         
         //Create button
         PrimaryButton(title: "Create") {
-            guard password == confirmPassword else {
-                viewModel.errorMessage = "Passwords don't match"
-                return
+            Task {
+                let success = await viewModel.signUp(
+                    username: username,
+                    email: email,
+                    password: password,
+                    confirmPassword: confirmPassword
+                )
+                if success {
+                    dismiss()
+                }
             }
-            viewModel.signup(email: email, password: password)
         }
         .padding(.horizontal, 50)
         .padding(.vertical, 20)
