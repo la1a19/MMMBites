@@ -104,5 +104,5 @@ struct AppBackground: View {
 
 #Preview {
     AppBackground()
-        
+    
 }
