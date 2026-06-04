@@ -13,7 +13,6 @@ struct Memory: Identifiable, Codable {
     var title: String
     var note: String?
     var imageURL: String?
-    var tags: [String]
     var date: Date
     var createdAt: Date
     var updatedAt: Date
@@ -24,7 +23,6 @@ struct Memory: Identifiable, Codable {
         title: String,
         note: String? = nil,
         imageURL: String? = nil,
-        tags: [String] = [],
         date: Date = Date(),
         createdAt: Date = Date(),
         updatedAt: Date = Date()
@@ -34,7 +32,6 @@ struct Memory: Identifiable, Codable {
         self.title = title
         self.note = note
         self.imageURL = imageURL
-        self.tags = tags
         self.date = date
         self.createdAt = createdAt
         self.updatedAt = updatedAt
