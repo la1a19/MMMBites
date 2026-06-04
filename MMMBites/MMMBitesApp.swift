@@ -16,7 +16,7 @@ struct MMMBitesApp: App {
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            WelcomeView()
         }
     }
 }
