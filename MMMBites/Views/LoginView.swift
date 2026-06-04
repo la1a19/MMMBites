@@ -12,13 +12,37 @@ struct LoginView: View {
     @State private var rememberPassword = false
     @State private var email = ""
     @State private var password = ""
-    @StateObject private var viewModel = LoginViewModel()
+    @EnvironmentObject var viewModel: LoginViewModel
     @State private var showSignUp = false
     
     var body: some View {
         if viewModel.isLoggedIn {
             //AlbumsView(isLoggedIn: $isLoggedIn)
-            Text("woohoo ure logged in")
+            VStack(spacing: 12) {
+                //testing purposes (would insert the main albums page here)
+                Text("woohoo ure logged in")
+                    .font(.title2)
+                    .bold()
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Entered email: \(email)")
+                    Text("Entered password: \(password)")
+                    Text("Firebase user: \(Auth.auth().currentUser?.email ?? "nil")")
+                    Text("UID: \(Auth.auth().currentUser?.uid ?? "nil")")
+                }
+                .font(.footnote)
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(12)
+                .padding(.horizontal, 24)
+
+                PrimaryButton(title: "Log out") {
+                    viewModel.logout()
+                }
+                .padding(.horizontal, 50)
+                .padding(.top, 20)
+            }
         } else {
             VStack() {
                 Text("Log In")
@@ -40,35 +64,28 @@ struct LoginView: View {
                         .font(.caption)
                         .padding(.horizontal, 24)
                 }
+
+                //password reset confirmation
+                if viewModel.passwordResetSent {
+                    Text("Password reset email sent — check your inbox")
+                        .foregroundColor(.green)
+                        .font(.caption)
+                        .padding(.horizontal, 24)
+                }
                 
-                HStack() {
-                    //Remember Password
-                    Button {
-                        rememberPassword.toggle()
-                    } label: {
-                        HStack {
-                            Image(systemName: rememberPassword ? "checkmark.square.fill" : "square")
-                                .foregroundColor(rememberPassword ? .black : .gray)
-                            Text("Remember Password")
-                                .font(.subheadline)
-                                .foregroundColor(.black)
-                        }
-                        Spacer()
-                    }
-                    .padding(.horizontal, 20)
-                    
+                HStack() { //didn't add 'remember me' checkbox because firebase already does that
                     //Forgot Password
                     SecondaryButton(title: "Forgot Password") {
-                        viewModel.forgotPassword(email: email)
+                        Task { await viewModel.forgotPassword(email: email) }
                     }
                     .font(.subheadline)
-                    .padding()
-                    
+                    .padding(.horizontal, 30)
+                    Spacer()
                 }
                 
                 //Login button
                 PrimaryButton(title: "Login") {
-                    viewModel.login(email: email, password: password)
+                    Task { await viewModel.login(email: email, password: password) }
                 }
                 .padding(.horizontal, 50)
                 .padding(.vertical, 50)
@@ -88,4 +105,5 @@ struct LoginView: View {
 
 #Preview {
     LoginView()
+        .environmentObject(LoginViewModel())
 }
