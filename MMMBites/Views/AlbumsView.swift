@@ -145,49 +145,29 @@ struct AlbumsView: View {
     // MARK: - Title
 
     private var titleRow: some View {
-        HStack {
+        HStack(alignment: .center) {
             Text("User's\nAlbums")
                 .font(.system(size: 34, weight: .bold))
+                .multilineTextAlignment(.leading)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
             Spacer()
-            Button {
+
+            GlassAddButton {
                 // create new album
-            } label: {
-                Image(systemName: "plus")
-                    .font(.title2)
-                    .foregroundColor(.black)
-                    .frame(width: 60, height: 44)
-                    .background(.white.opacity(0.5))
-                    .clipShape(Capsule())
             }
         }
+        .frame(maxWidth: .infinity, minHeight: 90, alignment: .center)
+        .padding(.horizontal, 12)
     }
-
     // MARK: - Search + filter
-
     private var searchRow: some View {
-        HStack(spacing: 0) {
-            HStack {
-                TextField("Search tag", text: $searchText)
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.black)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(.white)
-            .clipShape(Capsule())
-
-            Button {
-                withAnimation(.easeInOut) {
-                    showFilters.toggle()
-                }
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .foregroundColor(.black)
-                    .padding(12)
-            }
-        }
-        .background(.white.opacity(0.5))
-        .clipShape(Capsule())
+        SearchFilterBar(
+            searchText: $searchText,
+            showFilters: $showFilters
+        )
+        .padding(.horizontal, 12)
     }
 
     // MARK: - Bubbles carousel
