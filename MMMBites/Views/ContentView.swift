@@ -13,11 +13,7 @@ struct ContentView: View {
             Image(systemName: "globe")
                 .imageScale(.large)
                 .foregroundStyle(.tint)
-<<<<<<< HEAD:MMMBites/ContentView.swift
-            Text("fkdkis, world!")
-=======
             Text("bello, world!huhuhuhuhuha")
->>>>>>> main:MMMBites/Views/ContentView.swift
         }
         .padding()
     }
