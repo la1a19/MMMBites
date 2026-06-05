@@ -13,6 +13,7 @@ import Combine
 class LoginViewModel: ObservableObject {
     @Published var isLoggedIn = false
     @Published var errorMessage = ""
+    @Published var showError = false
     @Published var passwordResetSent = false
 
     private var authStateHandle: AuthStateDidChangeListenerHandle?
@@ -40,6 +41,7 @@ class LoginViewModel: ObservableObject {
             try await Auth.auth().signIn(withEmail: email, password: password)
         } catch {
             errorMessage = error.localizedDescription
+            showError = true
         }
     }
 
@@ -49,6 +51,7 @@ class LoginViewModel: ObservableObject {
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             errorMessage = "Enter your email first"
+            showError = true
             return
         }
         do {
@@ -56,6 +59,7 @@ class LoginViewModel: ObservableObject {
             passwordResetSent = true
         } catch {
             errorMessage = error.localizedDescription
+            showError = true
         }
     }
 

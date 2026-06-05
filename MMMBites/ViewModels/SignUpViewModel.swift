@@ -60,6 +60,10 @@ class SignUpViewModel: ObservableObject {
                 .document(uid)
                 .setData(userData)
 
+            // Firebase auto-signs-in the new user. Sign them out so they have to
+            // log in explicitly with their fresh credentials.
+            try? Auth.auth().signOut()
+
             return true
         } catch {
             errorMessage = error.localizedDescription

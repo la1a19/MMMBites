@@ -18,7 +18,14 @@ struct MMMBitesApp: App {
 
     var body: some Scene {
         WindowGroup {
-            WelcomeView()
+            Group {
+                if authViewModel.isLoggedIn {
+                    AlbumsView()
+                } else {
+                    WelcomeView()
+                }
+            }
+            .environmentObject(authViewModel)
         }
     }
 }
