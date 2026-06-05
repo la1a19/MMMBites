@@ -209,7 +209,9 @@ struct AlbumsView: View {
                         albumBubble(album)
                     }
                 }
+                #if os(iOS) || os(tvOS) || os(watchOS)
                 .tabViewStyle(.page(indexDisplayMode: .always))
+                #endif
                 .frame(height: 480)
             }
         }

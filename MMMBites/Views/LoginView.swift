@@ -24,11 +24,20 @@ struct LoginView: View {
                     .font(.title2)
                     .bold()
 
+                UserChip(
+                    avatarURL: viewModel.currentUser?.avatarURL,
+                    name: viewModel.currentUser?.username
+                        ?? Auth.auth().currentUser?.email
+                        ?? "Loading..."
+                )
+
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Entered email: \(email)")
                     Text("Entered password: \(password)")
                     Text("Firebase user: \(Auth.auth().currentUser?.email ?? "nil")")
                     Text("UID: \(Auth.auth().currentUser?.uid ?? "nil")")
+                    Text("Firestore displayName: \(viewModel.currentUser?.displayName ?? "nil")")
+                    Text("Firestore username: \(viewModel.currentUser?.username ?? "nil")")
                 }
                 .font(.footnote)
                 .padding()
