@@ -7,16 +7,19 @@
 
 import Foundation
 
-struct Album: Identifiable, Codable {
+struct Album: Identifiable, Codable, Hashable {
     var id: String = UUID().uuidString
     var title: String
     var description: String?
     var coverImageURL: String?
+    var coverPhotoData: Data?
     var ownerId: String
     var tags: [String]
-    var location: String?          // added: e.g. "SupaFancy Resto, Sydney"
-    var date: Date?                // added: the album's event date (June 3, 2067)
-    var friendIds: [String]        // added: ids of tagged friends
+    var location: String?
+    var latitude: Double?          // coordinate (filled by MapKit autocomplete)
+    var longitude: Double?
+    var date: Date?
+    var friendIds: [String]
     var createdAt: Date
     var updatedAt: Date
 
@@ -25,9 +28,12 @@ struct Album: Identifiable, Codable {
         title: String,
         description: String? = nil,
         coverImageURL: String? = nil,
+        coverPhotoData: Data? = nil,
         ownerId: String,
         tags: [String] = [],
         location: String? = nil,
+        latitude: Double? = nil,
+        longitude: Double? = nil,
         date: Date? = nil,
         friendIds: [String] = [],
         createdAt: Date = Date(),
@@ -37,9 +43,12 @@ struct Album: Identifiable, Codable {
         self.title = title
         self.description = description
         self.coverImageURL = coverImageURL
+        self.coverPhotoData = coverPhotoData
         self.ownerId = ownerId
         self.tags = tags
         self.location = location
+        self.latitude = latitude
+        self.longitude = longitude
         self.date = date
         self.friendIds = friendIds
         self.createdAt = createdAt
