@@ -9,6 +9,8 @@
 import SwiftUI
 
 struct AlbumsView: View {
+    @EnvironmentObject var authViewModel: LoginViewModel
+
     // Mock data for now. Replace with data from a ViewModel + Firestore later.
     @State private var albums: [Album] = [
         Album(title: "PARK", ownerId: "jisu", tags: ["Tree", "nature", "Picnic"]),
@@ -19,6 +21,8 @@ struct AlbumsView: View {
     @State private var searchText = ""
     @State private var showFilters = false
     @State private var selectedTags: Set<String> = []   // tags the user is filtering by
+    @State private var showAddAlbum = false
+    @State private var showEditProfile = false
 
     // All filter options shown when the filter panel is open
     private let filterOptions = ["Nature", "Picnic", "Fancy", "Family"]
@@ -64,6 +68,14 @@ struct AlbumsView: View {
             .padding(.horizontal, 20)
             .padding(.top, 10)
         }
+        .sheet(isPresented: $showAddAlbum) {
+            NavigationStack {
+                AddAlbumView()
+            }
+        }
+        .sheet(isPresented: $showEditProfile) {
+            EditProfileView()
+        }
     }
 
     // MARK: - Background
@@ -95,22 +107,29 @@ struct AlbumsView: View {
                     .background(.white.opacity(0.5))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-
+            
             Spacer()
+            
+            Menu {
+                Button {
+                    showEditProfile = true
+                } label: {
+                    Label("Edit Profile", systemImage: "pencil")
+                }
 
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(.gray.opacity(0.3))
-                    .frame(width: 36, height: 36)
-                    .overlay(Image(systemName: "person.fill").foregroundColor(.gray))
-                Text("Jisu")
-                    .fontWeight(.semibold)
-                    .foregroundColor(.black)
+                Button(role: .destructive) {
+                    authViewModel.logout()
+                } label: {
+                    Label("Log out", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+
+            } label: {
+                UserChip(
+                    avatarData: authViewModel.currentUser?.avatarData,
+                    avatarURL: authViewModel.currentUser?.avatarURL,
+                    name: authViewModel.currentUser?.username ?? "User"
+                )
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
-            .background(.white)
-            .clipShape(Capsule())
         }
     }
 
@@ -150,7 +169,7 @@ struct AlbumsView: View {
                 .font(.system(size: 34, weight: .bold))
             Spacer()
             Button {
-                // create new album
+                showAddAlbum = true
             } label: {
                 Image(systemName: "plus")
                     .font(.title2)
@@ -300,4 +319,5 @@ struct AlbumsView: View {
 
 #Preview {
     AlbumsView()
+        .environmentObject(LoginViewModel())
 }

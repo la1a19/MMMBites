@@ -54,4 +54,5 @@ struct WelcomeView: View {
 
 #Preview {
     WelcomeView()
+        .environmentObject(LoginViewModel())
 }

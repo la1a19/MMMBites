@@ -7,13 +7,16 @@
 
 import SwiftUI
 import FirebaseAuth
+import FirebaseFirestore
 import Combine
 
 @MainActor
 class LoginViewModel: ObservableObject {
     @Published var isLoggedIn = false
     @Published var errorMessage = ""
+    @Published var showError = false
     @Published var passwordResetSent = false
+    @Published var currentUser: User?   // Firestore profile of the logged-in user
 
     private var authStateHandle: AuthStateDidChangeListenerHandle?
 
@@ -23,7 +26,24 @@ class LoginViewModel: ObservableObject {
         authStateHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             Task { @MainActor in
                 self?.isLoggedIn = (user != nil)
+                if let uid = user?.uid {
+                    await self?.fetchCurrentUser(uid: uid)
+                } else {
+                    self?.currentUser = nil
+                }
             }
+        }
+    }
+
+    private func fetchCurrentUser(uid: String) async {
+        do {
+            let snapshot = try await Firestore.firestore()
+                .collection("users")
+                .document(uid)
+                .getDocument()
+            currentUser = try snapshot.data(as: User.self)
+        } catch {
+            errorMessage = "Couldn't load user profile: \(error.localizedDescription)"
         }
     }
 
@@ -40,6 +60,7 @@ class LoginViewModel: ObservableObject {
             try await Auth.auth().signIn(withEmail: email, password: password)
         } catch {
             errorMessage = error.localizedDescription
+            showError = true
         }
     }
 
@@ -49,6 +70,7 @@ class LoginViewModel: ObservableObject {
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             errorMessage = "Enter your email first"
+            showError = true
             return
         }
         do {
@@ -56,6 +78,7 @@ class LoginViewModel: ObservableObject {
             passwordResetSent = true
         } catch {
             errorMessage = error.localizedDescription
+            showError = true
         }
     }
 
