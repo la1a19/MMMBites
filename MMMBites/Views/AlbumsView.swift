@@ -105,6 +105,21 @@ struct AlbumsView: View {
         }
     }
 
+    // MARK: - Background
+
+    private var backgroundGradient: some View {
+        LinearGradient(
+            colors: [
+                Color(red: 0.78, green: 0.90, blue: 0.88),
+                Color(red: 0.96, green: 0.93, blue: 0.80),
+                Color(red: 0.80, green: 0.90, blue: 0.96)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .ignoresSafeArea()
+    }
+
     // MARK: - Header
 
     private var header: some View {
@@ -128,7 +143,7 @@ struct AlbumsView: View {
             .pressableScale()
 
             Spacer()
-
+            
             Menu {
                 Button {
                     Haptics.tap()
@@ -149,6 +164,7 @@ struct AlbumsView: View {
                 } label: {
                     Label("Log out", systemImage: "rectangle.portrait.and.arrow.right")
                 }
+
             } label: {
                 HStack(spacing: 8) {
                     profileAvatar(size: 32)
