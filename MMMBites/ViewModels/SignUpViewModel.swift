@@ -51,8 +51,8 @@ class SignUpViewModel: ObservableObject {
             let userData: [String: Any] = [
                 "id": uid,
                 "username": trimmedUsername,
-                "displayName": trimmedUsername,
-                "friendIDs": []
+                "friendIDs": [],
+                "createdAt": FieldValue.serverTimestamp()
             ]
 
             try await Firestore.firestore()
@@ -71,3 +71,5 @@ class SignUpViewModel: ObservableObject {
         }
     }
 }
+
+
