@@ -23,6 +23,7 @@ struct ProfileView: View {
     @State private var appear = false
     @State private var selectedPhotoData: Data?
     @State private var photoPickerItem: PhotosPickerItem?
+    @State private var showAddFriendSheet = false
 
     init(
         username: String = "Jisu",
@@ -132,9 +133,14 @@ struct ProfileView: View {
 
                         // Actions
                         VStack(spacing: AppSpacing.m) {
+                            actionRow(icon: "person.badge.plus.fill",
+                                      label: "Add Friend",
+                                      tint: AppColor.accent) {
+                                showAddFriendSheet = true
+                            }
                             actionRow(icon: "bell.fill",
                                       label: "Notifications",
-                                      tint: AppColor.accent) {
+                                      tint: AppColor.secondary) {
                                 // notifications later
                             }
                             actionRow(icon: "lock.fill",
@@ -181,6 +187,12 @@ struct ProfileView: View {
             }
             .onChange(of: photoPickerItem) { _, newItem in
                 Task { await loadProfilePhoto(from: newItem) }
+            }
+            .sheet(isPresented: $showAddFriendSheet) {
+                AddFriendSheet()
+                    .environmentObject(authViewModel)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
             }
         }
     }
@@ -309,6 +321,116 @@ struct ProfileView: View {
         }
         .buttonStyle(.plain)
         .pressableScale()
+    }
+}
+
+private struct AddFriendSheet: View {
+    @EnvironmentObject private var viewModel: LoginViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AppBackground(variant: .warm)
+
+                VStack(spacing: AppSpacing.l) {
+                    HStack(spacing: AppSpacing.s) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(AppColor.inkFaint)
+                        TextField("Search username", text: $query)
+                            .font(AppFont.body)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.search)
+                            .onSubmit {
+                                Task { await viewModel.searchUsers(matching: query) }
+                            }
+                        if !query.isEmpty {
+                            Button {
+                                query = ""
+                                viewModel.friendSearchResults = []
+                                viewModel.friendSearchMessage = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(AppColor.inkFaint)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.white.opacity(0.9), in: Capsule(style: .continuous))
+                    .overlay(Capsule().stroke(Color.white.opacity(0.7), lineWidth: 1))
+
+                    PrimaryButton(
+                        title: viewModel.isSearchingFriends ? "Searching..." : "Search",
+                        icon: "person.badge.plus.fill",
+                        isLoading: viewModel.isSearchingFriends
+                    ) {
+                        Task { await viewModel.searchUsers(matching: query) }
+                    }
+
+                    if !viewModel.friendSearchMessage.isEmpty {
+                        Text(viewModel.friendSearchMessage)
+                            .font(AppFont.caption)
+                            .foregroundColor(AppColor.inkMuted)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    ScrollView {
+                        LazyVStack(spacing: AppSpacing.m) {
+                            ForEach(viewModel.friendSearchResults) { user in
+                                Button {
+                                    Task { await viewModel.addFriend(user) }
+                                } label: {
+                                    HStack(spacing: AppSpacing.m) {
+                                        AvatarView(initials: user.username, size: 44)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(user.username)
+                                                .font(.clash(16, weight: .semibold))
+                                                .foregroundColor(AppColor.ink)
+                                            if let email = user.email {
+                                                Text(email)
+                                                    .font(AppFont.caption)
+                                                    .foregroundColor(AppColor.inkMuted)
+                                            }
+                                        }
+                                        Spacer()
+                                        Image(systemName: "plus.circle.fill")
+                                            .font(.clash(22, weight: .semibold))
+                                            .foregroundStyle(AppGradient.hero)
+                                    }
+                                    .padding(AppSpacing.m)
+                                    .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous)
+                                            .stroke(Color.white.opacity(0.6), lineWidth: 1)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(AppSpacing.xl)
+            }
+            .navigationTitle("Add Friend")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .onDisappear {
+            viewModel.friendSearchResults = []
+            viewModel.friendSearchMessage = ""
+        }
     }
 }
 

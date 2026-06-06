@@ -44,6 +44,28 @@ struct AlbumsView: View {
         }
     }
 
+    private var currentUsername: String {
+        authViewModel.currentUser?.username ?? "User"
+    }
+
+    private var currentUserEmail: String? {
+        authViewModel.currentUser?.email
+    }
+
+    private var currentFriendCount: Int {
+        authViewModel.currentUser?.friendIDs.count ?? 0
+    }
+
+    private var currentAvatarData: Data? {
+        if let profilePhotoData {
+            return profilePhotoData
+        }
+        guard let avatarData = authViewModel.currentUser?.avatarData else {
+            return nil
+        }
+        return Data(base64Encoded: avatarData)
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -88,12 +110,12 @@ struct AlbumsView: View {
             }
             .sheet(isPresented: $showProfile) {
                 ProfileView(
-                    username: "Jisu",
-                    email: "jisu@mmmbites.app",
-                    memoryCount: 3,
+                    username: currentUsername,
+                    email: currentUserEmail,
+                    memoryCount: albumMemories.values.reduce(0) { $0 + $1.count },
                     albumCount: albums.count,
-                    friendCount: 6,
-                    profilePhotoData: profilePhotoData
+                    friendCount: currentFriendCount,
+                    profilePhotoData: currentAvatarData
                 ) { newPhotoData in
                     profilePhotoData = newPhotoData
                 }
@@ -168,7 +190,7 @@ struct AlbumsView: View {
             } label: {
                 HStack(spacing: 8) {
                     profileAvatar(size: 32)
-                    Text("Jisu")
+                    Text(currentUsername)
                         .font(AppFont.subheadline)
                         .fontWeight(.semibold)
                         .foregroundColor(AppColor.ink)
@@ -187,8 +209,8 @@ struct AlbumsView: View {
 
     @ViewBuilder
     private func profileAvatar(size: CGFloat) -> some View {
-        if let profilePhotoData,
-           let image = UIImage(data: profilePhotoData) {
+        if let currentAvatarData,
+           let image = UIImage(data: currentAvatarData) {
             Image(uiImage: image)
                 .resizable()
                 .scaledToFill()
@@ -197,7 +219,7 @@ struct AlbumsView: View {
                 .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 1))
                 .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
         } else {
-            AvatarView(initials: "Jisu", size: size)
+            AvatarView(initials: currentUsername, size: size)
         }
     }
 
