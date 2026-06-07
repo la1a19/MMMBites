@@ -266,19 +266,7 @@ struct AlbumsView: View {
     // MARK: - Title
 
     private var titleRow: some View {
-<<<<<<< HEAD
-        HStack(alignment: .center) {
-            Text("User's\nAlbums")
-                .font(.system(size: 34, weight: .bold))
-                .multilineTextAlignment(.leading)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
 
-            Spacer()
-
-            GlassAddButton {
-                // create new album
-=======
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Your")
@@ -305,7 +293,7 @@ struct AlbumsView: View {
                 .background(Capsule().fill(AppGradient.hero))
                 .overlay(Capsule().stroke(Color.white.opacity(0.4), lineWidth: 1))
                 .shadow(color: AppColor.primary.opacity(0.35), radius: 10, y: 6)
->>>>>>> main
+
             }
             .buttonStyle(.plain)
             .pressableScale()
@@ -315,13 +303,7 @@ struct AlbumsView: View {
     }
     // MARK: - Search + filter
     private var searchRow: some View {
-<<<<<<< HEAD
-        SearchFilterBar(
-            searchText: $searchText,
-            showFilters: $showFilters
-        )
-        .padding(.horizontal, 12)
-=======
+
         HStack(spacing: 0) {
             HStack {
                 Image(systemName: "magnifyingglass")
@@ -382,7 +364,6 @@ struct AlbumsView: View {
                     .background(Capsule().fill(AppGradient.hero))
             }
         }
->>>>>>> main
     }
 
     // MARK: - Bubbles carousel
