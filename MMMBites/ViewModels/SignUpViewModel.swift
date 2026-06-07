@@ -51,14 +51,19 @@ class SignUpViewModel: ObservableObject {
             let userData: [String: Any] = [
                 "id": uid,
                 "username": trimmedUsername,
-                "displayName": trimmedUsername,
-                "friendIDs": []
+                "email": trimmedEmail,
+                "friendIDs": [],
+                "createdAt": FieldValue.serverTimestamp()
             ]
 
             try await Firestore.firestore()
                 .collection("users")
                 .document(uid)
                 .setData(userData)
+
+            // Firebase auto-signs-in the new user. Sign them out so they have to
+            // log in explicitly with their fresh credentials.
+            try? Auth.auth().signOut()
 
             return true
         } catch {
@@ -67,3 +72,5 @@ class SignUpViewModel: ObservableObject {
         }
     }
 }
+
+
