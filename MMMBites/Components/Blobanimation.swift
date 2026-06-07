@@ -17,22 +17,18 @@ public struct AnimatedBlobBackground: View {
                 )
                 .ignoresSafeArea()
 
-                // Top left
                 Blob(color: Color(red: 0.55, green: 0.78, blue: 0.95),
                      size: 280, anchorX: geo.size.width * 0.05, anchorY: geo.size.height * 0.08,
                      duration: 6.5, driftX: 65, driftY: 70)
 
-                // Top right
                 Blob(color: Color(red: 0.65, green: 0.82, blue: 0.98),
                      size: 260, anchorX: geo.size.width * 0.95, anchorY: geo.size.height * 0.22,
                      duration: 7.5, driftX: -55, driftY: 80)
 
-                // Bottom left
                 Blob(color: Color(red: 0.58, green: 0.75, blue: 0.96),
                      size: 270, anchorX: geo.size.width * 0.05, anchorY: geo.size.height * 0.88,
                      duration: 6.0, driftX: 60, driftY: -65)
 
-                // Bottom right
                 Blob(color: Color(red: 0.72, green: 0.88, blue: 1.00),
                      size: 250, anchorX: geo.size.width * 0.95, anchorY: geo.size.height * 0.78,
                      duration: 7.0, driftX: -50, driftY: -55)
