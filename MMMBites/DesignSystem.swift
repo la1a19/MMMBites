@@ -266,6 +266,32 @@ struct PillSurface: ViewModifier {
     }
 }
 
+/// Input-style rounded surface used by text fields, pickers and compact rows.
+struct FieldSurface: ViewModifier {
+    var radius: CGFloat = AppRadius.s
+    var fill: Color = AppColor.surface.opacity(0.85)
+
+    func body(content: Content) -> some View {
+        content
+            .background(fill, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .stroke(Color.white.opacity(0.6), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
+    }
+}
+
+/// Small circular glass surface used for icon-only controls.
+struct GlassCircleSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(AppGradient.glass, in: Circle())
+            .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
+            .shadow(color: .black.opacity(0.06), radius: 6, y: 3)
+    }
+}
+
 extension View {
     func pressableScale(_ scale: CGFloat = 0.96) -> some View {
         modifier(PressableScale(scale: scale))
@@ -275,6 +301,12 @@ extension View {
     }
     func pillSurface(color: Color = Color.white.opacity(0.85)) -> some View {
         modifier(PillSurface(color: color))
+    }
+    func fieldSurface(radius: CGFloat = AppRadius.s, fill: Color = AppColor.surface.opacity(0.85)) -> some View {
+        modifier(FieldSurface(radius: radius, fill: fill))
+    }
+    func glassCircleSurface() -> some View {
+        modifier(GlassCircleSurface())
     }
 
     /// Springy entrance — applied when content first appears.

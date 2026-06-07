@@ -9,6 +9,9 @@ import SwiftUI
 import SpriteKit
 
 struct AppBackground: View {
+    /// Variant usage:
+    /// - `.cool` is the default for content browsing, detail pages, and settings.
+    /// - `.warm` is for creation/editing flows, authentication, onboarding, and modal sheets.
     enum Variant {
         case cool
         case warm

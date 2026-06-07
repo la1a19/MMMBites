@@ -9,9 +9,12 @@ import SwiftUI
 import MapKit
 import Combine
 import PhotosUI
+import FirebaseAuth
+import FirebaseFirestore
 
 struct AddAlbumView: View {
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var authViewModel: LoginViewModel
 
     let albumToEdit: Album?   // nil = add new, non-nil = edit existing
     var onSave: (Album) -> Void = { _ in }
@@ -21,7 +24,7 @@ struct AddAlbumView: View {
     @State private var location: String
     @State private var tags: [String]          // tags currently on THIS album
     @State private var searchText: String = ""
-    @State private var selectedFriends: [String] = []
+    @State private var selectedFriends: [String] = []   // user IDs of tagged friends
     @State private var showFriendPicker = false
     @State private var coverPickerItem: PhotosPickerItem?
     @State private var coverPhotoData: Data?
@@ -30,11 +33,11 @@ struct AddAlbumView: View {
     @State private var selectedLongitude: Double?
     @FocusState private var isLocationFocused: Bool
 
-    // Mock friends list — replace with Firestore users query later
-    private let allFriends = ["Judy", "Mira", "Alex", "Sam", "Lila", "Nina", "Theo", "Ben"]
-    private let existingTagOptions = Array(
-        Set(MockData.allAlbums.flatMap { $0.tags })
-    ).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    // Real friends loaded from Firestore for the picker / display.
+    @State private var friendUsers: [User] = []
+    @State private var isLoadingFriends = false
+
+    private let existingTagOptions = AlbumTagDefaults.all
 
     // Whether we are editing (affects title text, save behaviour)
     private var isEditing: Bool { albumToEdit != nil }
@@ -43,7 +46,7 @@ struct AddAlbumView: View {
         self.albumToEdit = albumToEdit
         self.onSave = onSave
         // Pre-fill the form if editing, otherwise start empty
-        _title = State(initialValue: albumToEdit?.title ?? "")
+        _title = State(initialValue: albumToEdit?.title.uppercased() ?? "")
         _description = State(initialValue: albumToEdit?.description ?? "")
         _location = State(initialValue: albumToEdit?.location ?? "")
         _tags = State(initialValue: albumToEdit?.tags ?? [])
@@ -59,185 +62,24 @@ struct AddAlbumView: View {
 
             ScrollView {
                 VStack(spacing: AppSpacing.xl) {
-
-                    // Album name
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("ALBUM NAME")
-                            .font(AppFont.tiny)
-                            .foregroundColor(AppColor.inkMuted)
-                            .padding(.leading, 6)
-                        TextField("FANCY RESTO", text: $title)
-                            .font(.clash(22, weight: .bold))
-                            .multilineTextAlignment(.center)
-                            .autocorrectionDisabled(true)
-                            .textInputAutocapitalization(.never)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
-                            .background(Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
-                                    .stroke(Color.white.opacity(0.6), lineWidth: 1)
-                            )
-                            .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
-                    }
-                    .padding(.horizontal, 24)
-                    .bounceOnAppear()
+                    albumNameField
+                        .bounceOnAppear()
 
                     descriptionField
                         .bounceOnAppear(delay: 0.03)
 
-                    // Cover photo with edit overlay
                     coverPhoto
                         .bounceOnAppear(delay: 0.05)
 
-                    VStack(spacing: AppSpacing.s) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "mappin.and.ellipse")
-                                .foregroundColor(AppColor.primary)
-                            TextField("Location", text: $location)
-                                .font(AppFont.subheadline)
-                                .focused($isLocationFocused)
-                                .autocorrectionDisabled(true)
-                                .textInputAutocapitalization(.words)
-                                .onChange(of: location) { _, newValue in
-                                    selectedLatitude = nil
-                                    selectedLongitude = nil
-                                    locationSearch.update(query: newValue)
-                                }
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(Color.white.opacity(0.85), in: Capsule(style: .continuous))
-                        .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
+                    locationField
+                        .bounceOnAppear(delay: 0.1)
 
-                        if isLocationFocused && !locationSearch.completions.isEmpty {
-                            locationSuggestions
-                                .transition(.move(edge: .top).combined(with: .opacity))
-                        }
-                    }
-                    .bounceOnAppear(delay: 0.1)
+                    tagsSection
+                        .bounceOnAppear(delay: 0.2)
 
-                    // Existing tags
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 10) {
-                            Text("EXISTING TAGS")
-                                .font(AppFont.captionBold)
-                                .foregroundColor(AppColor.inkMuted)
-                            Text("\(tags.count)")
-                                .font(AppFont.tiny)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(Capsule().fill(AppColor.secondary))
-                            Spacer()
-                            compactTagInput
-                        }
+                    friendsSection
+                        .bounceOnAppear(delay: 0.25)
 
-                        if tags.isEmpty {
-                            HStack(spacing: 6) {
-                                Image(systemName: "tag")
-                                Text("No tags yet — add one above")
-                            }
-                            .font(AppFont.caption)
-                            .foregroundColor(AppColor.inkFaint)
-                            .padding(.vertical, 12)
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
-                                    .strokeBorder(
-                                        AppColor.inkFaint.opacity(0.4),
-                                        style: StrokeStyle(lineWidth: 1.2, dash: [4, 4])
-                                    )
-                            )
-                        } else {
-                            FlowLayout(spacing: 10) {
-                                ForEach(tags, id: \.self) { tag in
-                                    selectedTagChip(tag)
-                                }
-                            }
-                        }
-
-                        suggestedTags
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .bounceOnAppear(delay: 0.2)
-
-                    // Friends
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("FRIENDS")
-                                .font(AppFont.captionBold)
-                                .foregroundColor(AppColor.inkMuted)
-                            Spacer()
-                            Button {
-                                Haptics.tap()
-                                showFriendPicker = true
-                            } label: {
-                                Image(systemName: "plus")
-                                    .font(.clash(13, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .frame(width: 28, height: 28)
-                                    .background(Circle().fill(AppGradient.hero))
-                                    .shadow(color: AppColor.primary.opacity(0.4), radius: 4, y: 2)
-                            }
-                            .buttonStyle(.plain)
-                            .pressableScale(0.9)
-                        }
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: AppSpacing.m) {
-                                if selectedFriends.isEmpty {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "person.2")
-                                        Text("Tap + to tag friends")
-                                    }
-                                    .font(AppFont.caption)
-                                    .foregroundColor(AppColor.inkFaint)
-                                    .padding(.vertical, 18)
-                                    .padding(.horizontal, 16)
-                                    .frame(maxWidth: .infinity)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
-                                            .strokeBorder(
-                                                AppColor.inkFaint.opacity(0.4),
-                                                style: StrokeStyle(lineWidth: 1.2, dash: [4, 4])
-                                            )
-                                    )
-                                } else {
-                                    ForEach(selectedFriends, id: \.self) { friend in
-                                        VStack(spacing: 6) {
-                                            ZStack(alignment: .topTrailing) {
-                                                AvatarView(initials: friend, size: 64, showRing: true)
-                                                Button {
-                                                    withAnimation(AppAnimation.snappy) {
-                                                        selectedFriends.removeAll { $0 == friend }
-                                                    }
-                                                    Haptics.tap()
-                                                } label: {
-                                                    Image(systemName: "xmark")
-                                                        .font(.clash(9, weight: .bold))
-                                                        .foregroundColor(.white)
-                                                        .frame(width: 18, height: 18)
-                                                        .background(Circle().fill(AppColor.primary))
-                                                        .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
-                                                }
-                                                .buttonStyle(.plain)
-                                                .offset(x: 2, y: -2)
-                                            }
-                                            Text(friend)
-                                                .font(AppFont.caption)
-                                                .foregroundColor(AppColor.ink)
-                                        }
-                                        .transition(.scale.combined(with: .opacity))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .bounceOnAppear(delay: 0.25)
-
-                    // Save
                     PrimaryButton(title: isEditing ? "Save changes" : "Create album",
                                   icon: isEditing ? "checkmark" : "sparkles") {
                         Haptics.success()
@@ -253,7 +95,7 @@ struct AddAlbumView: View {
         .navigationTitle(isEditing ? "Edit Album" : "New Album")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+            ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     Haptics.tap()
                     dismiss()
@@ -262,20 +104,298 @@ struct AddAlbumView: View {
                         .font(.clash(13, weight: .bold))
                         .foregroundColor(AppColor.ink)
                         .frame(width: 32, height: 32)
-                        .background(AppGradient.glass, in: Circle())
+                        .glassCircleSurface()
                 }
             }
         }
         .animation(AppAnimation.snappy, value: tags)
         .animation(AppAnimation.snappy, value: selectedFriends)
+        .task(id: authViewModel.currentUser?.friendIDs ?? []) {
+            await loadFriends()
+        }
         .sheet(isPresented: $showFriendPicker) {
             FriendPickerSheet(
-                allFriends: allFriends,
-                selectedFriends: $selectedFriends
+                allFriends: friendUsers,
+                selectedFriendIDs: $selectedFriends,
+                isLoading: isLoadingFriends
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
+    }
+
+    // MARK: - Album name / location / tags sections
+
+    private var albumNameField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("ALBUM NAME")
+                .font(AppFont.tiny)
+                .foregroundColor(AppColor.inkMuted)
+                .padding(.leading, 6)
+            TextField("Enter album name", text: $title)
+                .font(.clash(22, weight: .bold))
+                .multilineTextAlignment(.center)
+                .autocorrectionDisabled(true)
+                .textInputAutocapitalization(.characters)
+                .onChange(of: title) { _, newValue in
+                    let uppercased = newValue.uppercased()
+                    if title != uppercased {
+                        title = uppercased
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
+                        .stroke(Color.white.opacity(0.6), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
+        }
+        .padding(.horizontal, 24)
+    }
+
+    private var locationField: some View {
+        VStack(spacing: AppSpacing.s) {
+            HStack(spacing: 6) {
+                Image(systemName: "mappin.and.ellipse")
+                    .foregroundColor(AppColor.primary)
+                TextField("Location", text: $location)
+                    .font(AppFont.subheadline)
+                    .focused($isLocationFocused)
+                    .autocorrectionDisabled(true)
+                    .textInputAutocapitalization(.words)
+                    .submitLabel(.done)
+                    .onSubmit { useTypedLocation() }
+                    .onChange(of: location) { _, newValue in
+                        selectedLatitude = nil
+                        selectedLongitude = nil
+                        locationSearch.update(query: newValue)
+                    }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color.white.opacity(0.85), in: Capsule(style: .continuous))
+            .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
+
+            if isLocationFocused && shouldShowLocationSuggestions {
+                locationSuggestions
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+    }
+
+    private var trimmedLocation: String {
+        location.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var shouldShowLocationSuggestions: Bool {
+        !trimmedLocation.isEmpty &&
+        (!locationSearch.completions.isEmpty || !matchesTopCompletion)
+    }
+
+    private var matchesTopCompletion: Bool {
+        guard let top = locationSearch.completions.first else { return false }
+        return top.title.localizedCaseInsensitiveCompare(trimmedLocation) == .orderedSame
+    }
+
+    private func useTypedLocation() {
+        guard !trimmedLocation.isEmpty else { return }
+        Haptics.selection()
+        location = trimmedLocation
+        selectedLatitude = nil
+        selectedLongitude = nil
+        isLocationFocused = false
+        locationSearch.clear()
+    }
+
+    private var tagsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Text("ALBUM TAGS")
+                    .font(AppFont.captionBold)
+                    .foregroundColor(AppColor.inkMuted)
+                Text("\(tags.count)")
+                    .font(AppFont.tiny)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(AppColor.secondary))
+                Spacer()
+                compactTagInput
+            }
+
+            if tags.isEmpty {
+                tagsEmptyRow
+            } else {
+                FlowLayout(spacing: 10) {
+                    ForEach(tags, id: \.self) { tag in
+                        selectedTagChip(tag)
+                    }
+                }
+            }
+
+            suggestedTags
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var tagsEmptyRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "tag")
+            Text("No album tags yet — add one above")
+        }
+        .font(AppFont.caption)
+        .foregroundColor(AppColor.inkFaint)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
+                .strokeBorder(
+                    AppColor.inkFaint.opacity(0.4),
+                    style: StrokeStyle(lineWidth: 1.2, dash: [4, 4])
+                )
+        )
+    }
+
+    // MARK: - Friends section
+
+    private var friendsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("SHARED WITH")
+                    .font(AppFont.captionBold)
+                    .foregroundColor(AppColor.inkMuted)
+                Spacer()
+                friendsAddButton
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: AppSpacing.m) {
+                    if selectedFriends.isEmpty {
+                        friendsEmptyRow
+                    } else {
+                        ForEach(selectedFriends, id: \.self) { friendID in
+                            selectedFriendChip(friendID)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var friendsAddButton: some View {
+        Button {
+            Haptics.tap()
+            showFriendPicker = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.clash(13, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(AppGradient.hero))
+                .shadow(color: AppColor.primary.opacity(0.4), radius: 4, y: 2)
+        }
+        .buttonStyle(.plain)
+        .pressableScale(0.9)
+    }
+
+    private var friendsEmptyRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "person.2")
+            Text("Tap + to share this album")
+        }
+        .font(AppFont.caption)
+        .foregroundColor(AppColor.inkFaint)
+        .padding(.vertical, 18)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
+                .strokeBorder(
+                    AppColor.inkFaint.opacity(0.4),
+                    style: StrokeStyle(lineWidth: 1.2, dash: [4, 4])
+                )
+        )
+    }
+
+    private func selectedFriendChip(_ friendID: String) -> some View {
+        VStack(spacing: 6) {
+            ZStack(alignment: .topTrailing) {
+                AvatarView(
+                    avatar: friendAvatarImage(for: friendID),
+                    initials: friendName(for: friendID),
+                    size: 64,
+                    showRing: true
+                )
+                Button {
+                    withAnimation(AppAnimation.snappy) {
+                        selectedFriends.removeAll { $0 == friendID }
+                    }
+                    Haptics.tap()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.clash(9, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 18, height: 18)
+                        .background(Circle().fill(AppColor.primary))
+                        .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+                }
+                .buttonStyle(.plain)
+                .offset(x: 2, y: -2)
+            }
+            Text(friendName(for: friendID))
+                .font(AppFont.caption)
+                .foregroundColor(AppColor.ink)
+        }
+        .transition(.scale.combined(with: .opacity))
+    }
+
+    // MARK: - Friend loading
+
+    private func loadFriends() async {
+        let friendIDs = authViewModel.currentUser?.friendIDs ?? []
+        guard !friendIDs.isEmpty else {
+            friendUsers = []
+            return
+        }
+
+        isLoadingFriends = true
+        defer { isLoadingFriends = false }
+
+        // Firestore `in` query supports up to 30 values per call.
+        let database = Firestore.firestore()
+        var loaded: [User] = []
+        for chunk in friendIDs.chunked(into: 30) {
+            do {
+                let snapshot = try await database
+                    .collection("users")
+                    .whereField(FieldPath.documentID(), in: chunk)
+                    .getDocuments()
+                loaded.append(contentsOf: snapshot.documents.compactMap {
+                    try? $0.data(as: User.self)
+                })
+            } catch {
+                print("[AddAlbumView] friend load error: \(error)")
+            }
+        }
+        friendUsers = loaded.sorted {
+            $0.username.localizedCaseInsensitiveCompare($1.username) == .orderedAscending
+        }
+    }
+
+    private func friendName(for id: String) -> String {
+        friendUsers.first(where: { $0.id == id })?.username ?? "Unknown"
+    }
+
+    private func friendAvatarImage(for id: String) -> Image? {
+        guard
+            let base64 = friendUsers.first(where: { $0.id == id })?.avatarData,
+            let data = Data(base64Encoded: base64),
+            let uiImage = UIImage(data: data)
+        else { return nil }
+        return Image(uiImage: uiImage)
     }
 
     // MARK: - Cover photo
@@ -443,7 +563,7 @@ struct AddAlbumView: View {
 
         return VStack(alignment: .leading, spacing: 8) {
             if !options.isEmpty {
-                Text("SUGGESTED TAGS")
+                Text("SUGGESTED ALBUM TAGS")
                     .font(AppFont.tiny)
                     .foregroundColor(AppColor.inkMuted)
                     .padding(.leading, 4)
@@ -493,14 +613,18 @@ struct AddAlbumView: View {
     }
 
     private func saveAlbum() {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         let trimmedDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedOwnerId = albumToEdit?.ownerId
+            ?? Auth.auth().currentUser?.uid
+            ?? ""
         let album = Album(
             id: albumToEdit?.id ?? UUID().uuidString,
-            title: title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Untitled Album" : title,
+            title: trimmedTitle.isEmpty ? "UNTITLED ALBUM" : trimmedTitle,
             description: trimmedDescription.isEmpty ? nil : trimmedDescription,
             coverImageURL: albumToEdit?.coverImageURL,
             coverPhotoData: coverPhotoData,
-            ownerId: albumToEdit?.ownerId ?? "jisu",
+            ownerId: resolvedOwnerId,
             tags: tags,
             location: location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : location,
             latitude: selectedLatitude,
@@ -531,6 +655,12 @@ struct AddAlbumView: View {
 
     private var locationSuggestions: some View {
         VStack(spacing: 0) {
+            useAsTypedRow
+
+            if !locationSearch.completions.isEmpty {
+                Divider().opacity(0.35)
+            }
+
             ForEach(Array(locationSearch.completions.prefix(5).enumerated()), id: \.element) { index, completion in
                 Button {
                     selectLocation(completion)
@@ -568,6 +698,29 @@ struct AddAlbumView: View {
                 .stroke(Color.white.opacity(0.7), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
+    }
+
+    private var useAsTypedRow: some View {
+        Button(action: useTypedLocation) {
+            HStack(spacing: 10) {
+                Image(systemName: "text.cursor")
+                    .foregroundColor(AppColor.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Use \"\(trimmedLocation)\"")
+                        .font(AppFont.subheadline.weight(.semibold))
+                        .foregroundColor(AppColor.ink)
+                        .lineLimit(1)
+                    Text("Save the location exactly as typed")
+                        .font(AppFont.caption)
+                        .foregroundColor(AppColor.inkFaint)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+        }
+        .buttonStyle(.plain)
     }
 
     private func selectLocation(_ completion: MKLocalSearchCompletion) {
@@ -642,15 +795,16 @@ final class LocationSearchCompleter: NSObject, ObservableObject, MKLocalSearchCo
 // MARK: - Friend picker sheet
 
 struct FriendPickerSheet: View {
-    let allFriends: [String]
-    @Binding var selectedFriends: [String]
+    let allFriends: [User]
+    @Binding var selectedFriendIDs: [String]
+    let isLoading: Bool
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
 
-    private var results: [String] {
+    private var results: [User] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return allFriends }
-        return allFriends.filter { $0.localizedCaseInsensitiveContains(trimmed) }
+        return allFriends.filter { $0.username.localizedCaseInsensitiveContains(trimmed) }
     }
 
     var body: some View {
@@ -658,39 +812,48 @@ struct FriendPickerSheet: View {
             ZStack {
                 AppBackground(variant: .warm)
 
-                List {
-                    ForEach(results, id: \.self) { friend in
-                        Button {
-                            withAnimation(AppAnimation.snappy) { toggle(friend) }
-                            Haptics.selection()
-                        } label: {
-                            HStack(spacing: AppSpacing.m) {
-                                AvatarView(initials: friend, size: 38)
-                                Text(friend)
-                                    .font(AppFont.body)
-                                    .foregroundColor(AppColor.ink)
-                                Spacer()
-                                if selectedFriends.contains(friend) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(AppGradient.hero)
-                                        .font(.clash(20, weight: .semibold))
-                                        .transition(.scale.combined(with: .opacity))
-                                } else {
-                                    Image(systemName: "circle")
-                                        .foregroundColor(AppColor.inkFaint)
-                                        .font(.clash(20, weight: .semibold))
+                if isLoading && allFriends.isEmpty {
+                    ProgressView("Loading friends…")
+                        .foregroundColor(AppColor.inkMuted)
+                } else if allFriends.isEmpty {
+                    emptyState
+                } else {
+                    List {
+                        ForEach(results, id: \.id) { friend in
+                            Button {
+                                withAnimation(AppAnimation.snappy) { toggle(friend) }
+                                Haptics.selection()
+                            } label: {
+                                HStack(spacing: AppSpacing.m) {
+                                    AvatarView(avatar: avatarImage(for: friend),
+                                               initials: friend.username,
+                                               size: 38)
+                                    Text(friend.username)
+                                        .font(AppFont.body)
+                                        .foregroundColor(AppColor.ink)
+                                    Spacer()
+                                    if let friendID = friend.id, selectedFriendIDs.contains(friendID) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(AppGradient.hero)
+                                            .font(.clash(20, weight: .semibold))
+                                            .transition(.scale.combined(with: .opacity))
+                                    } else {
+                                        Image(systemName: "circle")
+                                            .foregroundColor(AppColor.inkFaint)
+                                            .font(.clash(20, weight: .semibold))
+                                    }
                                 }
+                                .padding(.vertical, 6)
                             }
-                            .padding(.vertical, 6)
+                            .listRowBackground(Color.clear)
                         }
-                        .listRowBackground(Color.clear)
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search friends")
+                    .autocorrectionDisabled(true)
+                    .textInputAutocapitalization(.never)
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search friends")
-                .autocorrectionDisabled(true)
-                .textInputAutocapitalization(.never)
             }
             .navigationTitle("Tag Friends")
             .navigationBarTitleDisplayMode(.inline)
@@ -706,11 +869,37 @@ struct FriendPickerSheet: View {
         }
     }
 
-    private func toggle(_ friend: String) {
-        if let idx = selectedFriends.firstIndex(of: friend) {
-            selectedFriends.remove(at: idx)
+    private var emptyState: some View {
+        VStack(spacing: AppSpacing.m) {
+            Image(systemName: "person.2.slash")
+                .font(.clash(40, weight: .light))
+                .foregroundColor(AppColor.inkFaint)
+            Text("No friends to share with yet")
+                .font(AppFont.headline)
+                .foregroundColor(AppColor.inkMuted)
+            Text("Add friends from your profile before sharing an album.")
+                .font(AppFont.caption)
+                .foregroundColor(AppColor.inkFaint)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+        }
+    }
+
+    private func avatarImage(for user: User) -> Image? {
+        guard
+            let base64 = user.avatarData,
+            let data = Data(base64Encoded: base64),
+            let uiImage = UIImage(data: data)
+        else { return nil }
+        return Image(uiImage: uiImage)
+    }
+
+    private func toggle(_ friend: User) {
+        guard let friendID = friend.id else { return }
+        if let idx = selectedFriendIDs.firstIndex(of: friendID) {
+            selectedFriendIDs.remove(at: idx)
         } else {
-            selectedFriends.append(friend)
+            selectedFriendIDs.append(friendID)
         }
     }
 }
@@ -762,9 +951,21 @@ struct FlowLayout: Layout {
     }
 }
 
+// MARK: - Helpers
+
+extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [self] }
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0..<Swift.min($0 + size, count)])
+        }
+    }
+}
+
 #Preview("Add") {
     NavigationStack {
         AddAlbumView()
+            .environmentObject(LoginViewModel())
     }
 }
 
@@ -773,9 +974,10 @@ struct FlowLayout: Layout {
         AddAlbumView(albumToEdit: Album(
             title: "FANCY RESTO",
             ownerId: "jisu",
-            tags: ["Nature", "Fancy", "Picnic"],
+            tags: ["Dinner", "Japanese", "Date Night"],
             location: "SupaFancy Resto, Sydney",
             date: Date()
         ))
+        .environmentObject(LoginViewModel())
     }
 }

@@ -9,14 +9,7 @@ import SwiftUI
 
 struct AlbumsView: View {
     @EnvironmentObject var authViewModel: LoginViewModel
-
-    // Mock data for now. Replace with data from a ViewModel + Firestore later.
-    @State private var albums: [Album] = MockData.allAlbums
-    @State private var albumMemories: [String: [Memory]] = Dictionary(
-        uniqueKeysWithValues: MockData.allAlbums.map { album in
-            (album.id, MockData.memories(forAlbumId: album.id))
-        }
-    )
+    @StateObject private var viewModel = AlbumsViewModel()
 
     @State private var searchText = ""
     @State private var showFilters = false
@@ -28,17 +21,16 @@ struct AlbumsView: View {
     @State private var showSettings = false
     @State private var profilePhotoData: Data?
 
-    // All filter options shown when the filter panel is open
-    private let filterOptions = ["Picnic", "Friends", "Cozy", "Dinner", "Spicy", "Special"]
+    // Album-level categories shown when the filter panel is open.
+    private let filterOptions = AlbumTagDefaults.filters
 
     // Albums after applying selected tag filters + search text
     private var filteredAlbums: [Album] {
-        albums.filter { album in
+        viewModel.albums.filter { album in
             let matchesTags = selectedTags.isEmpty ||
                 !selectedTags.isDisjoint(with: Set(album.tags.map { $0.capitalized }))
 
-            let matchesSearch = searchText.isEmpty ||
-                album.tags.contains { $0.localizedCaseInsensitiveContains(searchText) }
+            let matchesSearch = searchText.isEmpty || albumMatchesSearch(album)
 
             return matchesTags && matchesSearch
         }
@@ -75,16 +67,16 @@ struct AlbumsView: View {
                     header
                         .bounceOnAppear()
 
-                    if showFilters {
-                        filterPills
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-
                     titleRow
                         .bounceOnAppear(delay: 0.05)
 
                     searchRow
                         .bounceOnAppear(delay: 0.1)
+
+                    if showFilters {
+                        filterPills
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
 
                     sectionHeader
                         .bounceOnAppear(delay: 0.15)
@@ -100,20 +92,28 @@ struct AlbumsView: View {
             .sheet(isPresented: $showAddAlbum) {
                 NavigationStack {
                     AddAlbumView { album in
-                        withAnimation(AppAnimation.snappy) {
-                            albums.insert(album, at: 0)
-                            albumMemories[album.id] = []
-                            currentPage = 0
+                        Task {
+                            await viewModel.add(album)
+                            await MainActor.run {
+                                currentPage = 0
+                            }
                         }
                     }
+                }
+            }
+            .task(id: authViewModel.currentUser?.id) {
+                if let uid = authViewModel.currentUser?.id {
+                    viewModel.startListening(for: uid)
+                } else {
+                    viewModel.stopListening()
                 }
             }
             .sheet(isPresented: $showProfile) {
                 ProfileView(
                     username: currentUsername,
                     email: currentUserEmail,
-                    memoryCount: albumMemories.values.reduce(0) { $0 + $1.count },
-                    albumCount: albums.count,
+                    memoryCount: viewModel.memoryCount,
+                    albumCount: viewModel.albums.count,
                     friendCount: currentFriendCount,
                     profilePhotoData: currentAvatarData
                 ) { newPhotoData in
@@ -123,6 +123,18 @@ struct AlbumsView: View {
             }
             .sheet(isPresented: $showSettings) {
                 SettingsView()
+            }
+            .alert(
+                "Couldn't sync albums",
+                isPresented: Binding(
+                    get: { viewModel.errorMessage != nil },
+                    set: { if !$0 { viewModel.errorMessage = nil } }
+                ),
+                presenting: viewModel.errorMessage
+            ) { _ in
+                Button("OK", role: .cancel) { viewModel.errorMessage = nil }
+            } message: { message in
+                Text(message)
             }
         }
     }
@@ -145,21 +157,16 @@ struct AlbumsView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack {
+        HStack(spacing: AppSpacing.s) {
             Button {
                 Haptics.tap()
                 withAnimation(AppAnimation.snappy) { showGridView.toggle() }
             } label: {
                 Image(systemName: showGridView ? "rectangle.stack.fill" : "square.grid.2x2.fill")
-                    .font(.clash(18, weight: .semibold))
+                    .font(.clash(16, weight: .semibold))
                     .foregroundColor(AppColor.ink)
-                    .frame(width: 42, height: 42)
-                    .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Color.white.opacity(0.6), lineWidth: 1)
-                    )
-                    .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
+                    .frame(width: 38, height: 38)
+                    .fieldSurface(radius: AppRadius.s, fill: AppColor.surfaceGlass)
             }
             .buttonStyle(.plain)
             .pressableScale()
@@ -188,21 +195,21 @@ struct AlbumsView: View {
                 }
 
             } label: {
-                HStack(spacing: 8) {
-                    profileAvatar(size: 32)
+                HStack(spacing: 6) {
+                    profileAvatar(size: 24)
                     Text(currentUsername)
-                        .font(AppFont.subheadline)
-                        .fontWeight(.semibold)
+                        .font(.clash(12, weight: .semibold))
                         .foregroundColor(AppColor.ink)
                     Image(systemName: "chevron.down")
-                        .font(.clash(11, weight: .bold))
+                        .font(.clash(9, weight: .bold))
                         .foregroundColor(AppColor.inkMuted)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(AppGradient.glass, in: Capsule(style: .continuous))
-                .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
-                .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
+                .padding(.leading, 5)
+                .padding(.trailing, 8)
+                .frame(height: 34)
+                .background(AppColor.surface.opacity(0.72), in: Capsule(style: .continuous))
+                .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.52), lineWidth: 1))
+                .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
             }
         }
     }
@@ -266,14 +273,14 @@ struct AlbumsView: View {
     // MARK: - Title
 
     private var titleRow: some View {
-        HStack(alignment: .top) {
+        HStack(alignment: .center, spacing: AppSpacing.m) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Your")
-                    .font(.clash(30, weight: .semibold))
-                    .foregroundColor(AppColor.inkMuted)
                 Text("Albums")
-                    .font(.clash(40, weight: .black))
+                    .font(AppFont.display)
                     .foregroundStyle(AppGradient.hero)
+                Text("\(viewModel.albums.count) albums · \(viewModel.memoryCount) memories")
+                    .font(AppFont.caption)
+                    .foregroundColor(AppColor.inkMuted)
             }
             Spacer()
             Button {
@@ -283,15 +290,15 @@ struct AlbumsView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "plus")
                         .font(.clash(16, weight: .bold))
-                    Text("New")
-                        .font(AppFont.subheadline.weight(.semibold))
+                    Text("New Album")
+                        .font(AppFont.captionBold)
                 }
                 .foregroundColor(.white)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
                 .background(Capsule().fill(AppGradient.hero))
                 .overlay(Capsule().stroke(Color.white.opacity(0.4), lineWidth: 1))
-                .shadow(color: AppColor.primary.opacity(0.35), radius: 10, y: 6)
+                .shadow(color: AppColor.primary.opacity(0.28), radius: 8, y: 4)
             }
             .buttonStyle(.plain)
             .pressableScale()
@@ -301,12 +308,12 @@ struct AlbumsView: View {
     // MARK: - Search + filter
 
     private var searchRow: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: AppSpacing.s) {
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(AppColor.inkFaint)
-                TextField("Search tag", text: $searchText)
-                    .font(AppFont.body)
+                TextField("Search albums", text: $searchText)
+                    .font(AppFont.subheadline)
                     .autocorrectionDisabled()
                 if !searchText.isEmpty {
                     Button {
@@ -320,27 +327,26 @@ struct AlbumsView: View {
                     .transition(.scale.combined(with: .opacity))
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Color.white.opacity(0.9), in: Capsule(style: .continuous))
+            .padding(.horizontal, 12)
+            .frame(height: 40)
+            .frame(maxWidth: .infinity)
+            .background(AppColor.surface.opacity(0.86), in: Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.58), lineWidth: 1))
+            .shadow(color: .black.opacity(0.04), radius: 5, y: 2)
 
             Button {
                 Haptics.tap()
                 withAnimation(AppAnimation.snappy) { showFilters.toggle() }
             } label: {
                 Image(systemName: "slider.horizontal.3")
+                    .font(.clash(14, weight: .semibold))
                     .foregroundColor(showFilters ? .white : AppColor.ink)
-                    .padding(12)
-                    .background(
-                        Circle().fill(showFilters ? AppColor.primary : Color.clear)
-                    )
-                    .padding(.horizontal, 4)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(showFilters ? AppColor.primary : AppColor.surface.opacity(0.88)))
+                    .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
             }
             .buttonStyle(.plain)
         }
-        .background(Color.white.opacity(0.55), in: Capsule(style: .continuous))
-        .overlay(Capsule().stroke(Color.white.opacity(0.7), lineWidth: 1))
-        .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
         .animation(AppAnimation.snappy, value: searchText.isEmpty)
     }
 
@@ -348,8 +354,8 @@ struct AlbumsView: View {
 
     private var sectionHeader: some View {
         HStack(alignment: .center) {
-            Text("Your Bite Bubbles")
-                .font(.clash(24, weight: .bold))
+            Text(showGridView ? "Album Grid" : "Bite Bubbles")
+                .font(AppFont.titleSmall)
                 .foregroundColor(AppColor.ink)
             Spacer()
             if !filteredAlbums.isEmpty {
@@ -367,7 +373,9 @@ struct AlbumsView: View {
 
     private var bubblesCarousel: some View {
         Group {
-            if filteredAlbums.isEmpty {
+            if !viewModel.hasInitiallyLoaded {
+                loadingPlaceholder
+            } else if filteredAlbums.isEmpty {
                 emptyState
             } else if showGridView {
                 gridView
@@ -375,6 +383,12 @@ struct AlbumsView: View {
                 carouselView
             }
         }
+    }
+
+    private var loadingPlaceholder: some View {
+        Color.clear
+            .frame(maxWidth: .infinity)
+            .frame(height: 500)
     }
 
     private var carouselView: some View {
@@ -385,12 +399,13 @@ struct AlbumsView: View {
                     NavigationLink {
                         AlbumDetailView(
                             album: album,
-                            initialMemories: memories(for: album)
-                        ) { updatedMemories in
-                            albumMemories[album.id] = updatedMemories
-                        } onAlbumUpdate: { updatedAlbum in
-                            updateAlbum(updatedAlbum)
-                        }
+                            onAlbumUpdate: { updatedAlbum in
+                                updateAlbum(updatedAlbum)
+                            },
+                            onAlbumDelete: { deletedAlbum in
+                                deleteAlbum(deletedAlbum)
+                            }
+                        )
                     } label: {
                         photoBubble(album, isActive: index == currentPage)
                     }
@@ -430,12 +445,13 @@ struct AlbumsView: View {
                     NavigationLink {
                         AlbumDetailView(
                             album: album,
-                            initialMemories: memories(for: album)
-                        ) { updatedMemories in
-                            albumMemories[album.id] = updatedMemories
-                        } onAlbumUpdate: { updatedAlbum in
-                            updateAlbum(updatedAlbum)
-                        }
+                            onAlbumUpdate: { updatedAlbum in
+                                updateAlbum(updatedAlbum)
+                            },
+                            onAlbumDelete: { deletedAlbum in
+                                deleteAlbum(deletedAlbum)
+                            }
+                        )
                     } label: {
                         gridCell(album)
                     }
@@ -468,7 +484,7 @@ struct AlbumsView: View {
 
             Text(album.title)
                 .font(.clash(18, weight: .medium))
-                .tracking(2)
+                .tracking(0.5)
                 .foregroundColor(AppColor.ink)
         }
         .padding(.vertical, AppSpacing.m)
@@ -491,23 +507,13 @@ struct AlbumsView: View {
                 placeholderSystemImage: "photo.on.rectangle.angled"
             )
 
-            // OPEN ALBUM pill
+            // Bottom pill — shows the album's location, or falls back to
+            // OPEN ALBUM when the album has no location set.
             VStack {
                 Spacer()
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.up.right.circle.fill")
-                        .font(.clash(13, weight: .bold))
-                    Text("OPEN ALBUM")
-                        .font(.clash(11, weight: .semibold))
-                        .tracking(1.2)
-                }
-                .foregroundColor(AppColor.ink)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(AppGradient.glass, in: Capsule(style: .continuous))
-                .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
-                .shadow(color: .black.opacity(0.08), radius: 8, y: 4)
-                .padding(.bottom, 14)
+                bubblePill(for: album)
+                    .padding(.bottom, 14)
+                    .padding(.horizontal, 24)
             }
             .frame(width: 280, height: 280)
         }
@@ -522,12 +528,46 @@ struct AlbumsView: View {
         .animation(AppAnimation.smooth, value: isActive)
     }
 
+    @ViewBuilder
+    private func bubblePill(for album: Album) -> some View {
+        if let location = album.location, !location.isEmpty {
+            HStack(spacing: 6) {
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.clash(12, weight: .bold))
+                Text(location)
+                    .font(.clash(11, weight: .semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .foregroundColor(AppColor.ink)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(AppGradient.glass, in: Capsule(style: .continuous))
+            .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
+            .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
+        } else {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.up.right.circle.fill")
+                    .font(.clash(13, weight: .bold))
+                Text("OPEN ALBUM")
+                    .font(.clash(11, weight: .semibold))
+                    .tracking(1.2)
+            }
+            .foregroundColor(AppColor.ink)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(AppGradient.glass, in: Capsule(style: .continuous))
+            .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
+            .shadow(color: .black.opacity(0.08), radius: 8, y: 4)
+        }
+    }
+
     // Frame 2 — separate info card (title + tags) shown below the photo
     private func albumInfoCard(_ album: Album) -> some View {
         VStack(spacing: AppSpacing.m) {
             Text(album.title)
                 .font(.clash(26, weight: .medium))
-                .tracking(4)
+                .tracking(1)
                 .foregroundColor(AppColor.ink)
 
             // Hairline accent
@@ -572,28 +612,29 @@ struct AlbumsView: View {
 
     private var emptyState: some View {
         VStack(spacing: AppSpacing.m) {
-            ZStack {
-                Circle()
-                    .fill(AppGradient.glass)
-                    .frame(width: 140, height: 140)
-                Image(systemName: "tray")
-                    .font(.clash(48, weight: .light))
-                    .foregroundColor(AppColor.inkFaint)
-            }
-            Text("No albums match your filters")
+            Image(systemName: viewModel.albums.isEmpty ? "rectangle.stack.badge.plus" : "line.3.horizontal.decrease.circle")
+                .font(.clash(42, weight: .light))
+                .foregroundColor(AppColor.inkFaint)
+                .frame(width: 92, height: 92)
+                .background(AppGradient.glass, in: Circle())
+            Text(viewModel.albums.isEmpty ? "Create your first album" : "No albums match your filters")
                 .font(AppFont.headline)
                 .foregroundColor(AppColor.inkMuted)
-            Text("Try clearing tags or a different search.")
+            Text(viewModel.albums.isEmpty ? "Start with a place, trip, or food theme." : "Try clearing tags or a different search.")
                 .font(AppFont.caption)
                 .foregroundColor(AppColor.inkFaint)
             Button {
-                withAnimation(AppAnimation.snappy) {
-                    selectedTags.removeAll()
-                    searchText = ""
+                if viewModel.albums.isEmpty {
+                    showAddAlbum = true
+                } else {
+                    withAnimation(AppAnimation.snappy) {
+                        selectedTags.removeAll()
+                        searchText = ""
+                    }
                 }
                 Haptics.tap()
             } label: {
-                Text("Reset filters")
+                Text(viewModel.albums.isEmpty ? "New Album" : "Reset filters")
                     .font(AppFont.captionBold)
                     .foregroundColor(.white)
                     .padding(.horizontal, 16)
@@ -604,7 +645,7 @@ struct AlbumsView: View {
             .pressableScale()
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 500)
+        .frame(height: 420)
     }
 
     // MARK: - Helpers
@@ -617,8 +658,13 @@ struct AlbumsView: View {
         }
     }
 
-    private func memories(for album: Album) -> [Memory] {
-        albumMemories[album.id] ?? []
+    private func albumMatchesSearch(_ album: Album) -> Bool {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return true }
+
+        return album.title.localizedCaseInsensitiveContains(query)
+        || (album.location?.localizedCaseInsensitiveContains(query) ?? false)
+        || album.tags.contains { $0.localizedCaseInsensitiveContains(query) }
     }
 
     private func coverPhotoData(for album: Album) -> [Data] {
@@ -626,7 +672,7 @@ struct AlbumsView: View {
             return [coverPhotoData]
         }
 
-        return memories(for: album).first { !$0.photoData.isEmpty }?.photoData ?? []
+        return []
     }
 
     private func coverImageURLs(for album: Album) -> [String] {
@@ -634,19 +680,15 @@ struct AlbumsView: View {
             return [coverImageURL]
         }
 
-        if let memoryURLs = memories(for: album).first(where: { !$0.imageURLs.isEmpty })?.imageURLs {
-            return memoryURLs
-        }
-
         return []
     }
 
     private func updateAlbum(_ updatedAlbum: Album) {
-        withAnimation(AppAnimation.snappy) {
-            if let index = albums.firstIndex(where: { $0.id == updatedAlbum.id }) {
-                albums[index] = updatedAlbum
-            }
-        }
+        Task { await viewModel.update(updatedAlbum) }
+    }
+
+    private func deleteAlbum(_ deletedAlbum: Album) {
+        Task { await viewModel.remove(deletedAlbum) }
     }
 }
 

@@ -11,38 +11,72 @@ import Foundation
 
 /// How the meal/experience felt.
 enum MemoryMood: String, Codable, CaseIterable, Identifiable {
-    case chill, fun, cozy, special, chaotic, comfort
+    case chill, fun, cozy, special, chaotic, comfort, fancy, adventurous
 
     var id: String { rawValue }
 
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        self = Self(rawValue: rawValue) ?? Self.legacyMoodMap[rawValue] ?? .special
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
+    private static let legacyMoodMap: [String: MemoryMood] = [
+        "mellow": .chill,
+        "peaceful": .chill,
+        "warm": .cozy,
+        "intimate": .cozy,
+        "playful": .fun,
+        "silly": .fun,
+        "buzzing": .fun,
+        "spontaneous": .adventurous,
+        "curious": .adventurous,
+        "romantic": .special,
+        "nostalgic": .special,
+        "sentimental": .special,
+        "grateful": .special,
+        "dreamy": .special,
+        "proud": .special,
+        "refreshing": .comfort
+    ]
+
     var label: String {
         switch self {
-        case .chill:    return "Chill"
-        case .fun:      return "Fun"
-        case .cozy:     return "Cozy"
-        case .special:  return "Special"
-        case .chaotic:  return "Chaotic"
-        case .comfort:  return "Comfort"
+        case .chill:        return "Chill"
+        case .fun:          return "Fun"
+        case .cozy:         return "Cozy"
+        case .special:      return "Special"
+        case .chaotic:      return "Chaotic"
+        case .comfort:      return "Comfort"
+        case .adventurous:  return "Adventurous"
+        case .fancy:        return "Fancy"
         }
     }
 
     var emoji: String {
         switch self {
-        case .chill:    return "😌"
-        case .fun:      return "🎉"
-        case .cozy:     return "🫖"
-        case .special:  return "✨"
-        case .chaotic:  return "🌪️"
-        case .comfort:  return "🍲"
+        case .chill:        return "😌"
+        case .fun:          return "🎉"
+        case .cozy:         return "🫖"
+        case .special:      return "✨"
+        case .chaotic:      return "🌪️"
+        case .comfort:      return "🍲"
+        case .adventurous:  return "🧭"
+        case .fancy:        return "🥂"
         }
     }
 }
 
-/// What made the experience worth remembering.
-enum MemorableReason: String, Codable, CaseIterable, Identifiable {
+/// Predefined defaults shown as quick-pick suggestions in the
+/// "What made it memorable" input. Memories store the raw label strings
+/// in `memorableTags`, so users can also add their own.
+enum MemorableReasonDefault: String, CaseIterable {
     case food, friends, place, conversation, atmosphere, surprise
-
-    var id: String { rawValue }
 
     var label: String {
         switch self {
@@ -55,15 +89,8 @@ enum MemorableReason: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    var icon: String {
-        switch self {
-        case .food:          return "fork.knife"
-        case .friends:       return "person.2.fill"
-        case .place:         return "mappin.and.ellipse"
-        case .conversation:  return "bubble.left.and.bubble.right.fill"
-        case .atmosphere:    return "sparkles"
-        case .surprise:      return "gift.fill"
-        }
+    static var allLabels: [String] {
+        allCases.map(\.label)
     }
 }
 
@@ -75,7 +102,7 @@ struct Memory: Identifiable, Codable {
     var title: String
     var note: String?
     var imageURLs: [String]
-    var photoData: [Data]              // locally picked photos (PhotosPicker)
+    var photoData: [Data] = []         // locally picked photos (PhotosPicker) — never persisted
     var location: String?
     var latitude: Double?              // coordinate for map preview
     var longitude: Double?
@@ -85,12 +112,24 @@ struct Memory: Identifiable, Codable {
     // Experience metadata
     var mood: MemoryMood?
     var bestBite: String?
-    var memorableReasons: [MemorableReason]
+    var memorableTags: [String]
     var participantIds: [String]
+
+    // Optional so older Firestore docs without the field still decode.
+    var isFavourite: Bool?
 
     var date: Date
     var createdAt: Date
     var updatedAt: Date
+
+    // photoData stays in-memory only — Firestore documents have a 1 MiB
+    // limit and even one photo blows past it, which previously caused the
+    // whole memory to fail to save.
+    enum CodingKeys: String, CodingKey {
+        case id, albumId, title, note, imageURLs, location, latitude, longitude
+        case capturedById, reactions, mood, bestBite, memorableTags, participantIds
+        case isFavourite, date, createdAt, updatedAt
+    }
 
     init(
         id: String = UUID().uuidString,
@@ -106,8 +145,9 @@ struct Memory: Identifiable, Codable {
         reactions: [Reaction] = [],
         mood: MemoryMood? = nil,
         bestBite: String? = nil,
-        memorableReasons: [MemorableReason] = [],
+        memorableTags: [String] = [],
         participantIds: [String] = [],
+        isFavourite: Bool? = nil,
         date: Date = Date(),
         createdAt: Date = Date(),
         updatedAt: Date = Date()
@@ -125,8 +165,9 @@ struct Memory: Identifiable, Codable {
         self.reactions = reactions
         self.mood = mood
         self.bestBite = bestBite
-        self.memorableReasons = memorableReasons
+        self.memorableTags = memorableTags
         self.participantIds = participantIds
+        self.isFavourite = isFavourite
         self.date = date
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -139,13 +180,19 @@ extension Memory {
     /// Short human-readable sentence that explains why this memory mattered.
     /// Generated from mood + people + location + memorable reasons.
     var recapSentence: String {
+        recapSentence(nameFor: { $0 })
+    }
+
+    /// Same as `recapSentence`, but maps participant IDs through `nameFor`
+    /// so the rendered names are usernames (or whatever the caller resolves).
+    func recapSentence(nameFor: (String) -> String) -> String {
         var parts: [String] = []
 
         let moodWord = mood?.label.lowercased() ?? "moment"
         parts.append("A \(moodWord) memory")
 
         if !participantIds.isEmpty {
-            let names = friendlyJoin(Array(participantIds.prefix(3)))
+            let names = friendlyJoin(participantIds.prefix(3).map(nameFor))
             parts.append("with \(names)")
         }
 
@@ -153,9 +200,9 @@ extension Memory {
             parts.append("at \(location)")
         }
 
-        if !memorableReasons.isEmpty {
-            let reasonLabels = memorableReasons.prefix(3).map { $0.label.lowercased() }
-            parts.append(", remembered for \(friendlyJoin(reasonLabels))")
+        if !memorableTags.isEmpty {
+            let labels = memorableTags.prefix(3).map { $0.lowercased() }
+            parts.append(", remembered for \(friendlyJoin(labels))")
         }
 
         // Join parts with spaces but no space before the comma part.

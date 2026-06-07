@@ -7,6 +7,9 @@
 
 import SwiftUI
 import PhotosUI
+import CoreImage.CIFilterBuiltins
+import AVFoundation
+import FirebaseFirestore
 
 struct ProfileView: View {
     let username: String
@@ -24,6 +27,9 @@ struct ProfileView: View {
     @State private var selectedPhotoData: Data?
     @State private var photoPickerItem: PhotosPickerItem?
     @State private var showAddFriendSheet = false
+    @State private var showManageFriendsSheet = false
+    @State private var showNotificationsInfo = false
+    @State private var showPrivacyInfo = false
 
     init(
         username: String = "Jisu",
@@ -138,15 +144,20 @@ struct ProfileView: View {
                                       tint: AppColor.accent) {
                                 showAddFriendSheet = true
                             }
+                            actionRow(icon: "person.2.fill",
+                                      label: "Manage Friends",
+                                      tint: AppColor.secondary) {
+                                showManageFriendsSheet = true
+                            }
                             actionRow(icon: "bell.fill",
                                       label: "Notifications",
                                       tint: AppColor.secondary) {
-                                // notifications later
+                                showNotificationsInfo = true
                             }
                             actionRow(icon: "lock.fill",
                                       label: "Privacy",
                                       tint: AppColor.primary) {
-                                // privacy later
+                                showPrivacyInfo = true
                             }
                             actionRow(icon: "rectangle.portrait.and.arrow.right",
                                       label: "Log out",
@@ -177,8 +188,7 @@ struct ProfileView: View {
                             .font(.clash(13, weight: .bold))
                             .foregroundColor(AppColor.ink)
                             .frame(width: 32, height: 32)
-                            .background(AppGradient.glass, in: Circle())
-                            .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
+                            .glassCircleSurface()
                     }
                 }
             }
@@ -193,6 +203,30 @@ struct ProfileView: View {
                     .environmentObject(authViewModel)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showManageFriendsSheet) {
+                ManageFriendsSheet()
+                    .environmentObject(authViewModel)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showNotificationsInfo) {
+                ComingSoonSheet(
+                    title: "Notifications",
+                    icon: "bell.fill",
+                    message: "Friend reactions and shared album updates will appear here when activity tracking is added."
+                )
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showPrivacyInfo) {
+                ComingSoonSheet(
+                    title: "Privacy",
+                    icon: "lock.fill",
+                    message: "Album visibility and sharing controls will live here once privacy settings are wired to Firestore."
+                )
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
             }
         }
     }
@@ -328,6 +362,12 @@ private struct AddFriendSheet: View {
     @EnvironmentObject private var viewModel: LoginViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    @State private var showMyQRCode = false
+    @State private var showQRScanner = false
+
+    private var currentUserID: String? {
+        viewModel.currentUser?.id
+    }
 
     var body: some View {
         NavigationStack {
@@ -335,6 +375,24 @@ private struct AddFriendSheet: View {
                 AppBackground(variant: .warm)
 
                 VStack(spacing: AppSpacing.l) {
+                    HStack(spacing: AppSpacing.m) {
+                        quickActionButton(
+                            icon: "qrcode",
+                            title: "My QR",
+                            tint: AppColor.secondary
+                        ) {
+                            showMyQRCode = true
+                        }
+
+                        quickActionButton(
+                            icon: "qrcode.viewfinder",
+                            title: "Scan QR",
+                            tint: AppColor.primary
+                        ) {
+                            showQRScanner = true
+                        }
+                    }
+
                     HStack(spacing: AppSpacing.s) {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(AppColor.inkFaint)
@@ -431,6 +489,488 @@ private struct AddFriendSheet: View {
             viewModel.friendSearchResults = []
             viewModel.friendSearchMessage = ""
         }
+        .sheet(isPresented: $showMyQRCode) {
+            MyFriendQRCodeSheet(
+                username: viewModel.currentUser?.username ?? "User",
+                userID: currentUserID
+            )
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showQRScanner) {
+            QRScannerSheet { userID in
+                Task {
+                    await viewModel.addFriend(userID: userID)
+                }
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private func quickActionButton(
+        icon: String,
+        title: String,
+        tint: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            Haptics.tap()
+            action()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.clash(15, weight: .semibold))
+                Text(title)
+                    .font(AppFont.captionBold)
+            }
+            .foregroundColor(AppColor.ink)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous)
+                    .stroke(tint.opacity(0.35), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
+        }
+        .buttonStyle(.plain)
+        .pressableScale()
+    }
+}
+
+private struct ManageFriendsSheet: View {
+    @EnvironmentObject private var viewModel: LoginViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var friends: [User] = []
+    @State private var isLoading = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AppBackground(variant: .warm)
+
+                Group {
+                    if isLoading && friends.isEmpty {
+                        ProgressView("Loading friends...")
+                            .font(AppFont.caption)
+                            .foregroundColor(AppColor.inkMuted)
+                    } else if friends.isEmpty {
+                        emptyState
+                    } else {
+                        ScrollView {
+                            LazyVStack(spacing: AppSpacing.m) {
+                                ForEach(friends) { friend in
+                                    friendRow(friend)
+                                }
+                            }
+                            .padding(AppSpacing.xl)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Manage Friends")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .task(id: viewModel.currentUser?.friendIDs ?? []) {
+            await loadFriends()
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: AppSpacing.m) {
+            Image(systemName: "person.2")
+                .font(.clash(42, weight: .light))
+                .foregroundColor(AppColor.inkFaint)
+            Text("No friends yet")
+                .font(AppFont.headline)
+                .foregroundColor(AppColor.inkMuted)
+            Text("Add friends by username or QR first.")
+                .font(AppFont.caption)
+                .foregroundColor(AppColor.inkFaint)
+        }
+        .padding(AppSpacing.xl)
+    }
+
+    private func friendRow(_ friend: User) -> some View {
+        HStack(spacing: AppSpacing.m) {
+            AvatarView(
+                avatar: avatarImage(for: friend),
+                initials: friend.username,
+                size: 46,
+                showRing: true
+            )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(friend.username)
+                    .font(.clash(16, weight: .semibold))
+                    .foregroundColor(AppColor.ink)
+                if let email = friend.email {
+                    Text(email)
+                        .font(AppFont.caption)
+                        .foregroundColor(AppColor.inkMuted)
+                }
+            }
+
+            Spacer()
+
+            Button(role: .destructive) {
+                Haptics.warning()
+                Task {
+                    await viewModel.removeFriend(friend)
+                    friends.removeAll { $0.id == friend.id }
+                }
+            } label: {
+                Image(systemName: "minus.circle.fill")
+                    .font(.clash(22, weight: .semibold))
+                    .foregroundColor(.red)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(AppSpacing.m)
+        .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous)
+                .stroke(Color.white.opacity(0.6), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
+    }
+
+    private func loadFriends() async {
+        let friendIDs = viewModel.currentUser?.friendIDs ?? []
+        guard !friendIDs.isEmpty else {
+            friends = []
+            return
+        }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        let database = Firestore.firestore()
+        var loaded: [User] = []
+        for chunk in friendIDs.chunked(into: 30) {
+            do {
+                let snapshot = try await database
+                    .collection("users")
+                    .whereField(FieldPath.documentID(), in: chunk)
+                    .getDocuments()
+
+                loaded.append(contentsOf: snapshot.documents.compactMap { document in
+                    guard var user = try? document.data(as: User.self) else { return nil }
+                    user.id = user.id ?? document.documentID
+                    return user
+                })
+            } catch {
+                viewModel.friendSearchMessage = error.localizedDescription
+            }
+        }
+
+        friends = loaded.sorted {
+            $0.username.localizedCaseInsensitiveCompare($1.username) == .orderedAscending
+        }
+    }
+
+    private func avatarImage(for user: User) -> Image? {
+        guard
+            let base64 = user.avatarData,
+            let data = Data(base64Encoded: base64),
+            let uiImage = UIImage(data: data)
+        else { return nil }
+        return Image(uiImage: uiImage)
+    }
+}
+
+private struct ComingSoonSheet: View {
+    let title: String
+    let icon: String
+    let message: String
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AppBackground(variant: .warm)
+
+                VStack(spacing: AppSpacing.l) {
+                    ZStack {
+                        Circle()
+                            .fill(AppGradient.glass)
+                            .frame(width: 96, height: 96)
+                        Image(systemName: icon)
+                            .font(.clash(34, weight: .semibold))
+                            .foregroundStyle(AppGradient.hero)
+                    }
+
+                    VStack(spacing: AppSpacing.s) {
+                        Text(title)
+                            .font(AppFont.titleSmall)
+                            .foregroundColor(AppColor.ink)
+                        Text(message)
+                            .font(AppFont.subheadline)
+                            .foregroundColor(AppColor.inkMuted)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(3)
+                    }
+                    .padding(.horizontal, AppSpacing.xl)
+
+                    PrimaryButton(title: "Got it", icon: "checkmark") {
+                        Haptics.tap()
+                        dismiss()
+                    }
+                }
+                .padding(AppSpacing.xl)
+            }
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+}
+
+private struct MyFriendQRCodeSheet: View {
+    let username: String
+    let userID: String?
+
+    @Environment(\.dismiss) private var dismiss
+
+    private var payload: String? {
+        userID.map { "mmmbites://user/\($0)" }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AppBackground(variant: .warm)
+
+                VStack(spacing: AppSpacing.l) {
+                    AvatarView(initials: username, size: 72, showRing: true)
+
+                    VStack(spacing: 4) {
+                        Text(username)
+                            .font(.clash(24, weight: .bold))
+                            .foregroundColor(AppColor.ink)
+                        Text("Scan to add friend")
+                            .font(AppFont.caption)
+                            .foregroundColor(AppColor.inkMuted)
+                    }
+
+                    if let payload,
+                       let image = QRCodeGenerator.image(from: payload, size: 260) {
+                        Image(uiImage: image)
+                            .interpolation(.none)
+                            .resizable()
+                            .frame(width: 260, height: 260)
+                            .padding(18)
+                            .background(Color.white, in: RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous)
+                                    .stroke(Color.white.opacity(0.7), lineWidth: 1)
+                            )
+                            .shadow(color: .black.opacity(0.08), radius: 10, y: 5)
+                    } else {
+                        Text("Log in to generate your QR")
+                            .font(AppFont.caption)
+                            .foregroundColor(AppColor.inkMuted)
+                            .padding(AppSpacing.l)
+                            .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous))
+                    }
+                }
+                .padding(AppSpacing.xl)
+            }
+            .navigationTitle("My QR")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct QRScannerSheet: View {
+    var onUserIDScanned: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var message = "Scan an MMMBites friend QR"
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AppBackground(variant: .warm)
+
+                VStack(spacing: AppSpacing.l) {
+                    QRCodeScannerView { code in
+                        guard let userID = FriendQRCodePayload.userID(from: code) else {
+                            message = "That QR doesn't look like an MMMBites profile"
+                            Haptics.warning()
+                            return
+                        }
+
+                        Haptics.success()
+                        onUserIDScanned(userID)
+                        dismiss()
+                    }
+                    .frame(height: 360)
+                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.l, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppRadius.l, style: .continuous)
+                            .stroke(Color.white.opacity(0.7), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
+
+                    Text(message)
+                        .font(AppFont.caption)
+                        .foregroundColor(AppColor.inkMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(AppSpacing.xl)
+            }
+            .navigationTitle("Scan QR")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+private enum FriendQRCodePayload {
+    static func userID(from code: String) -> String? {
+        guard let url = URL(string: code),
+              url.scheme == "mmmbites",
+              url.host == "user" else {
+            return nil
+        }
+
+        let userID = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return userID.isEmpty ? nil : userID
+    }
+}
+
+private enum QRCodeGenerator {
+    private static let context = CIContext()
+    private static let filter = CIFilter.qrCodeGenerator()
+
+    static func image(from string: String, size: CGFloat) -> UIImage? {
+        let data = Data(string.utf8)
+        filter.setValue(data, forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+
+        guard let outputImage = filter.outputImage else { return nil }
+        let scale = size / outputImage.extent.width
+        let transformed = outputImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+
+        guard let cgImage = context.createCGImage(transformed, from: transformed.extent) else {
+            return nil
+        }
+
+        return UIImage(cgImage: cgImage)
+    }
+}
+
+private struct QRCodeScannerView: UIViewControllerRepresentable {
+    var onCodeScanned: (String) -> Void
+
+    func makeUIViewController(context: Context) -> QRCodeScannerViewController {
+        QRCodeScannerViewController(onCodeScanned: onCodeScanned)
+    }
+
+    func updateUIViewController(_ uiViewController: QRCodeScannerViewController, context: Context) {}
+}
+
+private final class QRCodeScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
+    private let session = AVCaptureSession()
+    private var previewLayer: AVCaptureVideoPreviewLayer?
+    private var didScan = false
+    private let onCodeScanned: (String) -> Void
+
+    init(onCodeScanned: @escaping (String) -> Void) {
+        self.onCodeScanned = onCodeScanned
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        configureSession()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        previewLayer?.frame = view.bounds
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        didScan = false
+        if !session.isRunning {
+            DispatchQueue.global(qos: .userInitiated).async {
+                self.session.startRunning()
+            }
+        }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        if session.isRunning {
+            session.stopRunning()
+        }
+    }
+
+    private func configureSession() {
+        guard let device = AVCaptureDevice.default(for: .video),
+              let input = try? AVCaptureDeviceInput(device: device),
+              session.canAddInput(input) else {
+            return
+        }
+
+        session.addInput(input)
+
+        let output = AVCaptureMetadataOutput()
+        guard session.canAddOutput(output) else { return }
+
+        session.addOutput(output)
+        output.setMetadataObjectsDelegate(self, queue: .main)
+        output.metadataObjectTypes = [.qr]
+
+        let layer = AVCaptureVideoPreviewLayer(session: session)
+        layer.videoGravity = .resizeAspectFill
+        layer.frame = view.bounds
+        view.layer.addSublayer(layer)
+        previewLayer = layer
+    }
+
+    func metadataOutput(
+        _ output: AVCaptureMetadataOutput,
+        didOutput metadataObjects: [AVMetadataObject],
+        from connection: AVCaptureConnection
+    ) {
+        guard !didScan,
+              let object = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
+              let code = object.stringValue else {
+            return
+        }
+
+        didScan = true
+        onCodeScanned(code)
     }
 }
 

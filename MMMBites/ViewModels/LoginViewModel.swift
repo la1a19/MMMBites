@@ -166,6 +166,71 @@ class LoginViewModel: ObservableObject {
         }
     }
 
+    func addFriend(userID: String) async {
+        guard let currentUserID = Auth.auth().currentUser?.uid else {
+            friendSearchMessage = "Log in before adding friends"
+            return
+        }
+
+        guard userID != currentUserID else {
+            friendSearchMessage = "That's your own QR"
+            return
+        }
+
+        guard currentUser?.friendIDs.contains(userID) != true else {
+            friendSearchMessage = "You're already friends"
+            return
+        }
+
+        do {
+            let snapshot = try await database
+                .collection("users")
+                .document(userID)
+                .getDocument()
+
+            guard var user = try? snapshot.data(as: User.self) else {
+                friendSearchMessage = "Couldn't find that user"
+                return
+            }
+
+            user.id = user.id ?? snapshot.documentID
+            await addFriend(user)
+        } catch {
+            friendSearchMessage = error.localizedDescription
+        }
+    }
+
+    func removeFriend(_ user: User) async {
+        guard let currentUserID = Auth.auth().currentUser?.uid,
+              let friendID = user.id else {
+            friendSearchMessage = "Couldn't remove this friend"
+            return
+        }
+
+        do {
+            _ = try await database.runTransaction { transaction, _ in
+                let currentRef = self.database.collection("users").document(currentUserID)
+                let friendRef = self.database.collection("users").document(friendID)
+
+                transaction.updateData([
+                    "friendIDs": FieldValue.arrayRemove([friendID])
+                ], forDocument: currentRef)
+
+                transaction.updateData([
+                    "friendIDs": FieldValue.arrayRemove([currentUserID])
+                ], forDocument: friendRef)
+
+                return nil
+            }
+
+            currentUser?.friendIDs.removeAll { $0 == friendID }
+            friendSearchResults.removeAll { $0.id == friendID }
+            friendSearchMessage = "Removed \(user.username)"
+        } catch {
+            friendSearchMessage = error.localizedDescription
+        }
+    }
+
     func logout() {
         do {
             try Auth.auth().signOut()
