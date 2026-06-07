@@ -14,60 +14,112 @@ struct LoginView: View {
     @State private var password = ""
     @EnvironmentObject var viewModel: LoginViewModel
     @State private var showSignUp = false
-    
+    @State private var isLoading = false
+
     var body: some View {
-        VStack() {
-            Text("Log In")
-                .font(.title)
-                .bold()
+        ZStack {
+            AppBackground()
 
-            //Email and Password
-            Group {
-                AuthTextField(label: "Email", placeholder: "", input: $email)
-                AuthTextField(label: "Password", placeholder: "", input: $password, type: .password)
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 8)
+            ScrollView {
+                VStack(spacing: AppSpacing.xl) {
+                    // Header
+                    VStack(spacing: AppSpacing.s) {
+                        Text("Welcome back")
+                            .font(AppFont.display)
+                            .foregroundColor(AppColor.ink)
+                        Text("Log in to keep tasting your memories.")
+                            .font(AppFont.subheadline)
+                            .foregroundColor(AppColor.inkMuted)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.top, 40)
+                    .bounceOnAppear()
 
-            //password reset confirmation
-            if viewModel.passwordResetSent {
-                Text("Password reset email sent — check your inbox")
-                    .foregroundColor(.green)
-                    .font(.caption)
-                    .padding(.horizontal, 24)
-            }
+                    // Card with fields
+                    VStack(spacing: AppSpacing.l) {
+                        AuthTextField(
+                            label: "Email",
+                            placeholder: "you@example.com",
+                            input: $email,
+                            icon: "envelope.fill"
+                        )
 
-            HStack() { //didn't add 'remember me' checkbox because firebase already does that
-                //Forgot Password
-                SecondaryButton(title: "Forgot Password") {
-                    Task { await viewModel.forgotPassword(email: email) }
+                        AuthTextField(
+                            label: "Password",
+                            placeholder: "Your password",
+                            input: $password,
+                            type: .password,
+                            icon: "lock.fill"
+                        )
+
+                        // Password reset confirmation
+                        if viewModel.passwordResetSent {
+                            HStack(spacing: 6) {
+                                Image(systemName: "checkmark.seal.fill")
+                                Text("Password reset email sent — check your inbox")
+                            }
+                            .font(AppFont.caption)
+                            .foregroundColor(.green)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+
+                        HStack {
+                            SecondaryButton(title: "Forgot password?") {
+                                Task { await viewModel.forgotPassword(email: email) }
+                            }
+                            Spacer()
+                        }
+                    }
+                    .glassCard()
+                    .padding(.horizontal, AppSpacing.l)
+                    .bounceOnAppear(delay: 0.1)
+
+                    // Login button
+                    PrimaryButton(title: "Login", icon: "arrow.right", isLoading: isLoading) {
+                        Task {
+                            isLoading = true
+                            await viewModel.login(email: email, password: password)
+                            isLoading = false
+                        }
+                    }
+                    .padding(.horizontal, AppSpacing.xxxl)
+                    .bounceOnAppear(delay: 0.2)
+
+                    // Divider with social-style note
+                    HStack(spacing: AppSpacing.s) {
+                        Rectangle().fill(AppColor.inkFaint.opacity(0.3)).frame(height: 1)
+                        Text("OR")
+                            .font(AppFont.tiny)
+                            .foregroundColor(AppColor.inkFaint)
+                        Rectangle().fill(AppColor.inkFaint.opacity(0.3)).frame(height: 1)
+                    }
+                    .padding(.horizontal, AppSpacing.xxxl)
+
+                    // Sign up
+                    HStack(spacing: 4) {
+                        Text("Don't have an account?")
+                            .foregroundColor(AppColor.inkMuted)
+                        Button {
+                            Haptics.tap()
+                            showSignUp = true
+                        } label: {
+                            Text("Sign up")
+                                .foregroundStyle(AppGradient.hero)
+                                .fontWeight(.bold)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .font(AppFont.subheadline)
+                    .padding(.bottom, AppSpacing.xl)
+                    .sheet(isPresented: $showSignUp) {
+                        SignUpView()
+                    }
                 }
-                .font(.subheadline)
-                .padding(.horizontal, 30)
-                Spacer()
             }
-
-            //Login button
-            PrimaryButton(title: "Login") {
-                Task { await viewModel.login(email: email, password: password) }
-            }
-            .padding(.horizontal, 50)
-            .padding(.vertical, 50)
-
-            //Sign up
-            HStack(spacing: 4) {
-                Text("Don't have an account?")
-                    .foregroundColor(.secondary)
-                Button("Sign Up") {
-                    showSignUp = true
-                }
-                .fontWeight(.semibold)
-            }
-            .font(.subheadline)
-            .sheet(isPresented: $showSignUp) {
-                SignUpView()
-            }
+            .scrollDismissesKeyboard(.interactively)
         }
+        .animation(AppAnimation.snappy, value: viewModel.passwordResetSent)
         .alert("Login Failed", isPresented: $viewModel.showError) {
             Button("OK", role: .cancel) {}
         } message: {
