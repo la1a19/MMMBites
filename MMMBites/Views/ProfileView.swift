@@ -746,7 +746,7 @@ private struct MyFriendQRCodeSheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
+            ZStack(alignment: .top) {
                 AppBackground(variant: .warm)
 
                 VStack(spacing: AppSpacing.l) {
@@ -762,12 +762,12 @@ private struct MyFriendQRCodeSheet: View {
                     }
 
                     if let payload,
-                       let image = QRCodeGenerator.image(from: payload, size: 260) {
+                       let image = QRCodeGenerator.image(from: payload, size: 220) {
                         Image(uiImage: image)
                             .interpolation(.none)
                             .resizable()
-                            .frame(width: 260, height: 260)
-                            .padding(18)
+                            .frame(width: 220, height: 220)
+                            .padding(14)
                             .background(Color.white, in: RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous))
                             .overlay(
                                 RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous)
@@ -782,7 +782,9 @@ private struct MyFriendQRCodeSheet: View {
                             .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous))
                     }
                 }
-                .padding(AppSpacing.xl)
+                .padding(.horizontal, AppSpacing.xl)
+                .padding(.top, AppSpacing.l)
+                .padding(.bottom, AppSpacing.xl)
             }
             .navigationTitle("My QR")
             .navigationBarTitleDisplayMode(.inline)

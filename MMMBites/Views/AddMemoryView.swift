@@ -40,6 +40,9 @@ struct AddMemoryView: View {
     // Photo picking
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var photoData: [Data]
+    @State private var showPhotoSourceDialog = false
+    @State private var showPhotoLibraryPicker = false
+    @State private var showCameraPicker = false
 
     // Real friends loaded from Firestore for the picker / display.
     @State private var friendUsers: [User] = []
@@ -83,9 +86,16 @@ struct AddMemoryView: View {
                     photosField
                         .bounceOnAppear(delay: 0.03)
 
-                    HStack(alignment: .top, spacing: AppSpacing.m) {
-                        dateSection
-                        locationSection
+                    VStack(alignment: .leading, spacing: AppSpacing.m) {
+                        HStack(alignment: .top, spacing: AppSpacing.m) {
+                            dateSection
+                            locationSection
+                        }
+
+                        if showDatePicker {
+                            datePickerPopup
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
                     }
                     .bounceOnAppear(delay: 0.05)
 
@@ -143,6 +153,34 @@ struct AddMemoryView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
+        .confirmationDialog("Add a photo", isPresented: $showPhotoSourceDialog, titleVisibility: .visible) {
+            Button("Take Photo") {
+                showCameraPicker = true
+            }
+            Button("Choose from Library") {
+                showPhotoLibraryPicker = true
+            }
+            Button("Cancel", role: .cancel) { }
+        }
+        .photosPicker(
+            isPresented: $showPhotoLibraryPicker,
+            selection: $pickerItems,
+            maxSelectionCount: max(1, 5 - photoData.count),
+            matching: .images,
+            photoLibrary: .shared()
+        )
+        .fullScreenCover(isPresented: $showCameraPicker) {
+            CameraCaptureView { data in
+                guard let data else { return }
+                withAnimation(AppAnimation.snappy) {
+                    if photoData.count < 5 {
+                        photoData.append(data)
+                    }
+                }
+                Haptics.success()
+            }
+            .ignoresSafeArea()
+        }
     }
 
     // MARK: - Friend loading
@@ -197,16 +235,14 @@ struct AddMemoryView: View {
             sectionLabel("PHOTOS")
 
             if photoData.isEmpty {
-                PhotosPicker(
-                    selection: $pickerItems,
-                    maxSelectionCount: 5,
-                    matching: .images,
-                    photoLibrary: .shared()
-                ) {
+                Button {
+                    Haptics.tap()
+                    showPhotoSourceDialog = true
+                } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "camera.fill")
                             .font(.clash(15, weight: .semibold))
-                        Text("Pick a few photos to remember this meal by")
+                        Text("Pick a few photos or snap one right now")
                             .font(.clash(12, weight: .semibold))
                     }
                     .foregroundColor(AppColor.inkMuted)
@@ -265,16 +301,14 @@ struct AddMemoryView: View {
                             }
                         }
 
-                        PhotosPicker(
-                            selection: $pickerItems,
-                            maxSelectionCount: 5,
-                            matching: .images,
-                            photoLibrary: .shared()
-                        ) {
+                        Button {
+                            Haptics.tap()
+                            showPhotoSourceDialog = true
+                        } label: {
                             VStack(spacing: 7) {
                                 Image(systemName: "photo.badge.plus")
                                     .font(.clash(18, weight: .semibold))
-                                Text("Change")
+                                Text("Add")
                                     .font(AppFont.tiny)
                             }
                             .foregroundColor(AppColor.inkMuted)
@@ -301,17 +335,24 @@ struct AddMemoryView: View {
     }
 
     private func loadPickedPhotos(_ items: [PhotosPickerItem]) async {
+        guard !items.isEmpty else { return }
+
         var loaded: [Data] = []
         for item in items {
             if let data = try? await item.loadTransferable(type: Data.self) {
                 loaded.append(data)
             }
         }
+
         await MainActor.run {
             withAnimation(AppAnimation.snappy) {
-                photoData = loaded
+                let remainingSlots = max(0, 5 - photoData.count)
+                photoData.append(contentsOf: loaded.prefix(remainingSlots))
             }
-            Haptics.success()
+            pickerItems = []
+            if !loaded.isEmpty {
+                Haptics.success()
+            }
         }
     }
 
@@ -409,17 +450,17 @@ struct AddMemoryView: View {
                 .pillSurface()
             }
             .buttonStyle(.plain)
-
-            if showDatePicker {
-                DatePicker("Memory date", selection: $date, displayedComponents: .date)
-                    .datePickerStyle(.graphical)
-                    .tint(AppColor.primary)
-                    .padding(8)
-                    .glassCard(radius: AppRadius.m, padding: 0)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var datePickerPopup: some View {
+        DatePicker("Memory date", selection: $date, displayedComponents: .date)
+            .datePickerStyle(.graphical)
+            .tint(AppColor.primary)
+            .padding(8)
+            .frame(maxWidth: .infinity)
+            .glassCard(radius: AppRadius.m, padding: 0)
     }
 
     // MARK: - Location
@@ -963,6 +1004,54 @@ struct AddMemoryView: View {
         Haptics.success()
         onSave(memory)
         dismiss()
+    }
+}
+
+private struct CameraCaptureView: UIViewControllerRepresentable {
+    var onCapture: (Data?) -> Void
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = UIImagePickerController.isSourceTypeAvailable(.camera) ? .camera : .photoLibrary
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onCapture: onCapture)
+    }
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        private let onCapture: (Data?) -> Void
+        private var didFinish = false
+
+        init(onCapture: @escaping (Data?) -> Void) {
+            self.onCapture = onCapture
+        }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+        ) {
+            guard !didFinish else { return }
+            didFinish = true
+
+            let image = (info[.editedImage] as? UIImage) ?? (info[.originalImage] as? UIImage)
+            let data = image?.jpegData(compressionQuality: 0.9)
+            picker.dismiss(animated: true) { [onCapture] in
+                onCapture(data)
+            }
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            guard !didFinish else { return }
+            didFinish = true
+            picker.dismiss(animated: true) { [onCapture] in
+                onCapture(nil)
+            }
+        }
     }
 }
 

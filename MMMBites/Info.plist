@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>NSCameraUsageDescription</key>
-	<string>MMMBites uses the camera to scan friend QR codes.</string>
+	<string>MMMBites uses the camera to capture meal photos and scan friend QR codes.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>ClashGrotesk-Extralight.otf</string>
