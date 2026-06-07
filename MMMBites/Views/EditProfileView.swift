@@ -22,10 +22,12 @@ struct EditProfileView: View {
     @State private var selectedImageData: Data?
     
     var body: some View {
+
         let currentAvatarData = viewModel.currentUser?.avatarData
         let currentAvatarURL = viewModel.currentUser?.avatarURL
 
         return NavigationView {
+
             VStack(spacing: 0) {
                 Text("Edit Profile")
                     .font(.title)
@@ -37,11 +39,13 @@ struct EditProfileView: View {
                         Group {
                             if let data = selectedImageData, let uiImage = UIImage(data: data) {
                                 Image(uiImage: uiImage).resizable().scaledToFill()
+
                             } else if let b64 = currentAvatarData,
                                       let data = Data(base64Encoded: b64),
                                       let uiImage = UIImage(data: data) {
                                 Image(uiImage: uiImage).resizable().scaledToFill()
                             } else if let urlString = currentAvatarURL,
+
                                       let url = URL(string: urlString) {
                                 AsyncImage(url: url) { image in
                                     image.resizable().scaledToFill()

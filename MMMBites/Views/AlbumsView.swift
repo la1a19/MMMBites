@@ -26,6 +26,7 @@ struct AlbumsView: View {
     @State private var showGridView = false
     @State private var showProfile = false
     @State private var showSettings = false
+    @State private var showEditProfile = false
     @State private var profilePhotoData: Data?
 
     // All filter options shown when the filter panel is open
@@ -125,30 +126,21 @@ struct AlbumsView: View {
                 SettingsView()
             }
         }
+
+        .sheet(isPresented: $showEditProfile) {
+            EditProfileView()
+        }
     }
 
     // MARK: - Background
-
-    private var backgroundGradient: some View {
-        LinearGradient(
-            colors: [
-                Color(red: 0.78, green: 0.90, blue: 0.88),
-                Color(red: 0.96, green: 0.93, blue: 0.80),
-                Color(red: 0.80, green: 0.90, blue: 0.96)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .ignoresSafeArea()
-    }
-
-    // MARK: - Header
 
     private var header: some View {
         HStack {
             Button {
                 Haptics.tap()
-                withAnimation(AppAnimation.snappy) { showGridView.toggle() }
+                withAnimation(AppAnimation.snappy) {
+                    showGridView.toggle()
+                }
             } label: {
                 Image(systemName: showGridView ? "rectangle.stack.fill" : "square.grid.2x2.fill")
                     .font(.clash(18, weight: .semibold))
@@ -165,7 +157,7 @@ struct AlbumsView: View {
             .pressableScale()
 
             Spacer()
-            
+
             Menu {
                 Button {
                     Haptics.tap()
@@ -173,20 +165,29 @@ struct AlbumsView: View {
                 } label: {
                     Label("Profile", systemImage: "person.crop.circle")
                 }
+
                 Button {
                     Haptics.tap()
                     showSettings = true
                 } label: {
                     Label("Settings", systemImage: "gearshape")
                 }
+
+                Button {
+                    Haptics.tap()
+                    showEditProfile = true
+                } label: {
+                    Label("Edit Profile", systemImage: "pencil")
+                }
+
                 Divider()
+
                 Button(role: .destructive) {
                     Haptics.warning()
                     authViewModel.logout()
                 } label: {
                     Label("Log out", systemImage: "rectangle.portrait.and.arrow.right")
                 }
-
             } label: {
                 HStack(spacing: 8) {
                     profileAvatar(size: 32)
@@ -204,22 +205,6 @@ struct AlbumsView: View {
                 .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
                 .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
             }
-        }
-    }
-
-    @ViewBuilder
-    private func profileAvatar(size: CGFloat) -> some View {
-        if let currentAvatarData,
-           let image = UIImage(data: currentAvatarData) {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
-                .frame(width: size, height: size)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 1))
-                .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
-        } else {
-            AvatarView(initials: currentUsername, size: size)
         }
     }
 
@@ -278,7 +263,9 @@ struct AlbumsView: View {
             }
             Spacer()
             Button {
+
                 Haptics.soft()
+
                 showAddAlbum = true
             } label: {
                 HStack(spacing: 6) {

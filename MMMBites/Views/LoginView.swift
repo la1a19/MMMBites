@@ -17,6 +17,7 @@ struct LoginView: View {
     @State private var isLoading = false
 
     var body: some View {
+
         ZStack {
             AppBackground()
 
@@ -115,11 +116,15 @@ struct LoginView: View {
                     .sheet(isPresented: $showSignUp) {
                         SignUpView()
                     }
+
                 }
+                .fontWeight(.semibold)
             }
+
             .scrollDismissesKeyboard(.interactively)
         }
         .animation(AppAnimation.snappy, value: viewModel.passwordResetSent)
+
         .alert("Login Failed", isPresented: $viewModel.showError) {
             Button("OK", role: .cancel) {}
         } message: {

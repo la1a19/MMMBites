@@ -51,7 +51,9 @@ class SignUpViewModel: ObservableObject {
             let userData: [String: Any] = [
                 "id": uid,
                 "username": trimmedUsername,
+
                 "email": trimmedEmail,
+
                 "friendIDs": [],
                 "createdAt": FieldValue.serverTimestamp()
             ]

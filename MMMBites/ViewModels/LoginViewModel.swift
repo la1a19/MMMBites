@@ -16,10 +16,12 @@ class LoginViewModel: ObservableObject {
     @Published var errorMessage = ""
     @Published var showError = false
     @Published var passwordResetSent = false
+
     @Published var currentUser: User?
     @Published var friendSearchResults: [User] = []
     @Published var friendSearchMessage = ""
     @Published var isSearchingFriends = false
+
 
     private var authStateHandle: AuthStateDidChangeListenerHandle?
     private let database = Firestore.firestore()
@@ -34,7 +36,9 @@ class LoginViewModel: ObservableObject {
                     await self?.fetchCurrentUser(uid: uid)
                 } else {
                     self?.currentUser = nil
+
                     self?.friendSearchResults = []
+
                 }
             }
         }
@@ -42,7 +46,9 @@ class LoginViewModel: ObservableObject {
 
     private func fetchCurrentUser(uid: String) async {
         do {
+
             let snapshot = try await database
+
                 .collection("users")
                 .document(uid)
                 .getDocument()
@@ -84,6 +90,7 @@ class LoginViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
             showError = true
+
         }
     }
 
@@ -163,6 +170,7 @@ class LoginViewModel: ObservableObject {
             friendSearchMessage = "Added \(user.username)"
         } catch {
             friendSearchMessage = error.localizedDescription
+
         }
     }
 

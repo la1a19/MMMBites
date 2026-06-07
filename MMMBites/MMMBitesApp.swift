@@ -27,6 +27,7 @@ struct MMMBitesApp: App {
                 }
             }
             .environmentObject(authViewModel)
+
             .preferredColorScheme(colorScheme(for: AppearanceMode(rawValue: appearanceRaw) ?? .system))
         }
     }
@@ -36,6 +37,7 @@ struct MMMBitesApp: App {
         case .system: return nil
         case .light:  return .light
         case .dark:   return .dark
+
         }
     }
 }

@@ -8,6 +8,7 @@
 import Foundation
 import FirebaseFirestore
 
+
 struct User: Identifiable, Codable, Equatable {
     @DocumentID var id: String?
     var username: String
@@ -55,4 +56,5 @@ struct User: Identifiable, Codable, Equatable {
         friendIDs = try container.decodeIfPresent([String].self, forKey: .friendIDs) ?? []
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
     }
+
 }

@@ -15,11 +15,13 @@ struct Album: Identifiable, Codable, Hashable {
     var coverPhotoData: Data?
     var ownerId: String
     var tags: [String]
+
     var location: String?
     var latitude: Double?          // coordinate (filled by MapKit autocomplete)
     var longitude: Double?
     var date: Date?
     var friendIds: [String]
+
     var createdAt: Date
     var updatedAt: Date
 
@@ -32,8 +34,10 @@ struct Album: Identifiable, Codable, Hashable {
         ownerId: String,
         tags: [String] = [],
         location: String? = nil,
+
         latitude: Double? = nil,
         longitude: Double? = nil,
+
         date: Date? = nil,
         friendIds: [String] = [],
         createdAt: Date = Date(),
@@ -47,8 +51,10 @@ struct Album: Identifiable, Codable, Hashable {
         self.ownerId = ownerId
         self.tags = tags
         self.location = location
+
         self.latitude = latitude
         self.longitude = longitude
+
         self.date = date
         self.friendIds = friendIds
         self.createdAt = createdAt

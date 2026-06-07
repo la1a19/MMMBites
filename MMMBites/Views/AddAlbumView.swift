@@ -5,24 +5,29 @@
 //  Created by Jisu Kim on 5/6/2026.
 //
 
+
 import SwiftUI
 import MapKit
 import Combine
 import PhotosUI
 
+
 struct AddAlbumView: View {
     @Environment(\.dismiss) var dismiss
 
     let albumToEdit: Album?   // nil = add new, non-nil = edit existing
+
     var onSave: (Album) -> Void = { _ in }
 
     @State private var title: String
     @State private var description: String
     @State private var location: String
+
     @State private var tags: [String]          // tags currently on THIS album
     @State private var searchText: String = ""
     @State private var selectedFriends: [String] = []
     @State private var showFriendPicker = false
+
     @State private var coverPickerItem: PhotosPickerItem?
     @State private var coverPhotoData: Data?
     @StateObject private var locationSearch = LocationSearchCompleter()
@@ -36,8 +41,10 @@ struct AddAlbumView: View {
         Set(MockData.allAlbums.flatMap { $0.tags })
     ).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
 
+
     // Whether we are editing (affects title text, save behaviour)
     private var isEditing: Bool { albumToEdit != nil }
+
 
     init(albumToEdit: Album? = nil, onSave: @escaping (Album) -> Void = { _ in }) {
         self.albumToEdit = albumToEdit
@@ -51,10 +58,12 @@ struct AddAlbumView: View {
         _coverPhotoData = State(initialValue: albumToEdit?.coverPhotoData)
         _selectedLatitude = State(initialValue: albumToEdit?.latitude)
         _selectedLongitude = State(initialValue: albumToEdit?.longitude)
+
     }
 
     var body: some View {
         ZStack {
+
             AppBackground(variant: .warm)
 
             ScrollView {
@@ -166,6 +175,7 @@ struct AddAlbumView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             Text("FRIENDS")
+
                                 .font(AppFont.captionBold)
                                 .foregroundColor(AppColor.inkMuted)
                             Spacer()
@@ -229,12 +239,14 @@ struct AddAlbumView: View {
                                                 .foregroundColor(AppColor.ink)
                                         }
                                         .transition(.scale.combined(with: .opacity))
+
                                     }
                                 }
                             }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+
                     .bounceOnAppear(delay: 0.25)
 
                     // Save
@@ -268,6 +280,7 @@ struct AddAlbumView: View {
         }
         .animation(AppAnimation.snappy, value: tags)
         .animation(AppAnimation.snappy, value: selectedFriends)
+
         .sheet(isPresented: $showFriendPicker) {
             FriendPickerSheet(
                 allFriends: allFriends,
@@ -279,6 +292,7 @@ struct AddAlbumView: View {
     }
 
     // MARK: - Cover photo
+
 
     private var descriptionField: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -339,11 +353,13 @@ struct AddAlbumView: View {
                         image.resizable().scaledToFill()
                     } placeholder: {
                         Circle().fill(AppColor.bgMint).shimmering()
+
                     }
                     .frame(width: 240, height: 240)
                     .clipShape(Circle())
                 } else {
                     Circle()
+
                         .fill(AppGradient.glass)
                         .frame(width: 240, height: 240)
                         .overlay(
@@ -486,6 +502,7 @@ struct AddAlbumView: View {
             tags.append(tag)
         }
         Haptics.selection()
+
     }
 
     private func removeTag(_ tag: String) {
@@ -493,6 +510,7 @@ struct AddAlbumView: View {
     }
 
     private func saveAlbum() {
+
         let trimmedDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
         let album = Album(
             id: albumToEdit?.id ?? UUID().uuidString,
@@ -637,6 +655,7 @@ final class LocationSearchCompleter: NSObject, ObservableObject, MKLocalSearchCo
     func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
         completions = []
     }
+
 }
 
 // MARK: - Friend picker sheet
@@ -655,6 +674,7 @@ struct FriendPickerSheet: View {
 
     var body: some View {
         NavigationStack {
+
             ZStack {
                 AppBackground(variant: .warm)
 
@@ -692,15 +712,18 @@ struct FriendPickerSheet: View {
                 .autocorrectionDisabled(true)
                 .textInputAutocapitalization(.never)
             }
+
             .navigationTitle("Tag Friends")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
+
                     Button("Done") {
                         Haptics.tap()
                         dismiss()
                     }
                     .fontWeight(.semibold)
+
                 }
             }
         }
