@@ -19,6 +19,8 @@ struct AlbumsView: View {
     @State private var showGridView = false
     @State private var showProfile = false
     @State private var showSettings = false
+    @State private var showFriends = false
+    @State private var showMemorySearch = false
     @State private var profilePhotoData: Data?
 
     // Album-level categories shown when the filter panel is open.
@@ -78,6 +80,11 @@ struct AlbumsView: View {
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
 
+                    if let throwback = throwbackMemory {
+                        throwbackCard(throwback)
+                            .bounceOnAppear(delay: 0.12)
+                    }
+
                     sectionHeader
                         .bounceOnAppear(delay: 0.15)
 
@@ -115,6 +122,7 @@ struct AlbumsView: View {
                     memoryCount: viewModel.memoryCount,
                     albumCount: viewModel.albums.count,
                     friendCount: currentFriendCount,
+                    memories: viewModel.memories,
                     profilePhotoData: currentAvatarData
                 ) { newPhotoData in
                     profilePhotoData = newPhotoData
@@ -123,6 +131,21 @@ struct AlbumsView: View {
             }
             .sheet(isPresented: $showSettings) {
                 SettingsView()
+            }
+            .sheet(isPresented: $showFriends) {
+                FriendsSheet(memories: viewModel.memories)
+                    .environmentObject(authViewModel)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showMemorySearch) {
+                MemorySearchView(
+                    memories: viewModel.memories,
+                    albums: viewModel.albums
+                )
+                .environmentObject(authViewModel)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
             }
             .alert(
                 "Couldn't sync albums",
@@ -172,7 +195,37 @@ struct AlbumsView: View {
             .pressableScale()
 
             Spacer()
-            
+
+            Button {
+                Haptics.tap()
+                showMemorySearch = true
+            } label: {
+                Image(systemName: "text.magnifyingglass")
+                    .font(.clash(14, weight: .semibold))
+                    .foregroundColor(AppColor.ink)
+                    .frame(width: 34, height: 34)
+                    .background(AppColor.surface.opacity(0.72), in: Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.52), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
+            }
+            .buttonStyle(.plain)
+            .pressableScale()
+
+            Button {
+                Haptics.tap()
+                showFriends = true
+            } label: {
+                Image(systemName: "person.2.fill")
+                    .font(.clash(14, weight: .semibold))
+                    .foregroundColor(AppColor.ink)
+                    .frame(width: 34, height: 34)
+                    .background(AppColor.surface.opacity(0.72), in: Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.52), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
+            }
+            .buttonStyle(.plain)
+            .pressableScale()
+
             Menu {
                 Button {
                     Haptics.tap()
@@ -399,6 +452,7 @@ struct AlbumsView: View {
                     NavigationLink {
                         AlbumDetailView(
                             album: album,
+                            crossAlbumMemories: viewModel.memories,
                             onAlbumUpdate: { updatedAlbum in
                                 updateAlbum(updatedAlbum)
                             },
@@ -445,6 +499,7 @@ struct AlbumsView: View {
                     NavigationLink {
                         AlbumDetailView(
                             album: album,
+                            crossAlbumMemories: viewModel.memories,
                             onAlbumUpdate: { updatedAlbum in
                                 updateAlbum(updatedAlbum)
                             },
@@ -646,6 +701,125 @@ struct AlbumsView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 420)
+    }
+
+    // MARK: - Throwback
+
+    private var throwbackMemory: Memory? {
+        let calendar = Calendar.current
+        let today = Date()
+        let startOfToday = calendar.startOfDay(for: today)
+        let todayComp = calendar.dateComponents([.month, .day], from: today)
+
+        // Primary: same month + day, but a past year ("On this day, 1 year ago")
+        let onThisDay = viewModel.memories.filter { memory in
+            let comp = calendar.dateComponents([.month, .day], from: memory.date)
+            return memory.date < startOfToday
+                && comp.month == todayComp.month
+                && comp.day == todayComp.day
+        }
+        if let match = onThisDay.sorted(by: { $0.date > $1.date }).first {
+            return match
+        }
+
+        // Fallback: any memory older than 30 days ("Throwback")
+        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: today) ?? today
+        return viewModel.memories
+            .filter { $0.date < thirtyDaysAgo }
+            .randomElement()
+    }
+
+    private func throwbackLabel(for memory: Memory) -> String {
+        let calendar = Calendar.current
+        let now = Date()
+        let comp = calendar.dateComponents([.year, .month, .day], from: now)
+        let memComp = calendar.dateComponents([.year, .month, .day], from: memory.date)
+
+        let isOnThisDay = comp.month == memComp.month && comp.day == memComp.day
+        let years = max(0, (comp.year ?? 0) - (memComp.year ?? 0))
+
+        if isOnThisDay && years >= 1 {
+            return "ON THIS DAY · \(years) YEAR\(years == 1 ? "" : "S") AGO"
+        }
+
+        let months = calendar.dateComponents([.month], from: memory.date, to: now).month ?? 0
+        if years >= 1 {
+            return "THROWBACK · \(years) YEAR\(years == 1 ? "" : "S") AGO"
+        }
+        if months >= 1 {
+            return "THROWBACK · \(months) MONTH\(months == 1 ? "" : "S") AGO"
+        }
+        return "THROWBACK"
+    }
+
+    private func album(forMemory memory: Memory) -> Album? {
+        viewModel.albums.first { $0.id == memory.albumId }
+    }
+
+    private func throwbackCard(_ memory: Memory) -> some View {
+        let parentAlbum = album(forMemory: memory)
+        return NavigationLink {
+            MemoryDetailView(
+                memory: memory,
+                albumTitle: parentAlbum?.title ?? "Memory",
+                album: parentAlbum
+            )
+        } label: {
+            HStack(spacing: AppSpacing.m) {
+                MemoryPhotoThumbnail(
+                    photoData: memory.photoData,
+                    imageURLs: memory.imageURLs,
+                    width: 56,
+                    height: 56,
+                    isCircle: false,
+                    placeholderSystemImage: "clock.arrow.circlepath"
+                )
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(throwbackLabel(for: memory))
+                        .font(.clash(10, weight: .semibold))
+                        .tracking(1.1)
+                        .foregroundStyle(AppGradient.hero)
+                        .lineLimit(1)
+
+                    Text(memory.title)
+                        .font(.clash(15, weight: .semibold))
+                        .foregroundColor(AppColor.ink)
+                        .lineLimit(1)
+
+                    HStack(spacing: 8) {
+                        if let mood = memory.mood {
+                            Text(mood.emoji).font(.system(size: 11))
+                        }
+                        if let location = memory.location, !location.isEmpty {
+                            Text(location)
+                                .font(.clash(10, weight: .medium))
+                                .foregroundColor(AppColor.inkMuted)
+                                .lineLimit(1)
+                        } else if !memory.participantIds.isEmpty {
+                            Text("\(memory.participantIds.count) friend\(memory.participantIds.count == 1 ? "" : "s")")
+                                .font(.clash(10, weight: .medium))
+                                .foregroundColor(AppColor.inkMuted)
+                        }
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.clash(11, weight: .bold))
+                    .foregroundColor(AppColor.inkFaint)
+            }
+            .padding(AppSpacing.m)
+            .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous)
+                    .stroke(Color.white.opacity(0.6), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
+        }
+        .buttonStyle(.plain)
+        .pressableScale(0.98)
     }
 
     // MARK: - Helpers

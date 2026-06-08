@@ -12,6 +12,7 @@ import FirebaseFirestore
 struct AlbumDetailView: View {
     @State private var album: Album
     private let initialMemories: [Memory]
+    let crossAlbumMemories: [Memory]
     var onAlbumUpdate: ((Album) -> Void)?
     var onAlbumDelete: ((Album) -> Void)?
 
@@ -28,6 +29,7 @@ struct AlbumDetailView: View {
     init(
         album: Album,
         initialMemories: [Memory]? = nil,
+        crossAlbumMemories: [Memory] = [],
         onAlbumUpdate: ((Album) -> Void)? = nil,
         onAlbumDelete: ((Album) -> Void)? = nil
     ) {
@@ -35,6 +37,7 @@ struct AlbumDetailView: View {
         self.onAlbumUpdate = onAlbumUpdate
         self.onAlbumDelete = onAlbumDelete
         self.initialMemories = initialMemories ?? []
+        self.crossAlbumMemories = crossAlbumMemories
     }
 
     private var currentUserID: String? {
@@ -47,6 +50,13 @@ struct AlbumDetailView: View {
 
     private var memories: [Memory] {
         memoriesViewModel.memories.isEmpty ? initialMemories : memoriesViewModel.memories
+    }
+
+    private var locationHintMemories: [Memory] {
+        var seenIDs: Set<String> = []
+        return (memories + crossAlbumMemories).filter { memory in
+            seenIDs.insert(memory.id).inserted
+        }
     }
 
     /// Up to 3 related memories from the same real album.
@@ -461,7 +471,10 @@ struct AlbumDetailView: View {
 
     private func addMemoryButton(compact: Bool) -> some View {
         NavigationLink {
-            AddMemoryView(album: album) { newMemory in
+            AddMemoryView(
+                album: album,
+                existingMemories: locationHintMemories
+            ) { newMemory in
                 Task {
                     await memoriesViewModel.add(newMemory)
                 }
@@ -777,7 +790,10 @@ struct AlbumDetailView: View {
                 .foregroundColor(AppColor.inkFaint)
             if memories.isEmpty {
                 NavigationLink {
-                    AddMemoryView(album: album) { newMemory in
+                    AddMemoryView(
+                        album: album,
+                        existingMemories: locationHintMemories
+                    ) { newMemory in
                         Task {
                             await memoriesViewModel.add(newMemory)
                         }

@@ -203,6 +203,35 @@ struct MemoryTitleSection: View {
     }
 }
 
+struct MemoryMoodCard: View {
+    let memory: Memory
+
+    var body: some View {
+        if let mood = memory.mood {
+            HStack(spacing: AppSpacing.m) {
+                Text(mood.emoji)
+                    .font(.system(size: 38))
+                    .frame(width: 56, height: 56)
+                    .background(Circle().fill(AppGradient.glass))
+                    .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("HOW IT FELT")
+                        .font(.clash(10, weight: .semibold))
+                        .tracking(1.2)
+                        .foregroundColor(AppColor.inkMuted)
+                    Text(mood.label)
+                        .font(.clash(22, weight: .bold))
+                        .foregroundStyle(AppGradient.hero)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .glassCard()
+        }
+    }
+}
+
 struct MemoryLocationRow: View {
     let memory: Memory
 

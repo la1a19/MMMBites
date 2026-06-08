@@ -76,7 +76,11 @@ enum AppGradient {
     )
 
     static let hero = LinearGradient(
-        colors: [AppColor.primary, AppColor.secondary],
+        colors: [
+            Color(red: 1.00, green: 0.42, blue: 0.36),   // tomato
+            Color(red: 0.88, green: 0.23, blue: 0.43),   // raspberry
+            Color(red: 0.55, green: 0.12, blue: 0.29)    // dark cherry
+        ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )

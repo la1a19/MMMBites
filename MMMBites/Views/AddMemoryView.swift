@@ -15,6 +15,7 @@ import FirebaseFirestore
 struct AddMemoryView: View {
     let album: Album
     let memoryToEdit: Memory?
+    let existingMemories: [Memory]
     var onSave: (Memory) -> Void = { _ in }
 
     @Environment(\.dismiss) private var dismiss
@@ -53,10 +54,12 @@ struct AddMemoryView: View {
     init(
         album: Album,
         memoryToEdit: Memory? = nil,
+        existingMemories: [Memory] = [],
         onSave: @escaping (Memory) -> Void = { _ in }
     ) {
         self.album = album
         self.memoryToEdit = memoryToEdit
+        self.existingMemories = existingMemories
         self.onSave = onSave
 
         _title             = State(initialValue: memoryToEdit?.title ?? "")
@@ -67,9 +70,9 @@ struct AddMemoryView: View {
         _participants      = State(initialValue: memoryToEdit?.participantIds ?? [])
         _date              = State(initialValue: memoryToEdit?.date ?? Date())
         _photoData         = State(initialValue: memoryToEdit?.photoData ?? [])
-        _location          = State(initialValue: memoryToEdit?.location ?? album.location ?? "")
-        _selectedLatitude  = State(initialValue: memoryToEdit?.latitude ?? album.latitude)
-        _selectedLongitude = State(initialValue: memoryToEdit?.longitude ?? album.longitude)
+        _location          = State(initialValue: memoryToEdit?.location ?? "")
+        _selectedLatitude  = State(initialValue: memoryToEdit?.latitude)
+        _selectedLongitude = State(initialValue: memoryToEdit?.longitude)
         _showOptionalDetails = State(initialValue: memoryToEdit != nil)
     }
 
@@ -96,16 +99,34 @@ struct AddMemoryView: View {
                             datePickerPopup
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                         }
+
+                        if let suggestion = locationSuggestionMemory {
+                            locationHintCard(for: suggestion)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
                     }
+                    .animation(AppAnimation.snappy, value: locationSuggestionMemory?.id)
                     .bounceOnAppear(delay: 0.05)
 
-                    optionalDetailsToggle
+                    moodSection
                         .bounceOnAppear(delay: 0.08)
 
+                    bestBiteSection
+                        .bounceOnAppear(delay: 0.1)
+
+                    memorableSection
+                        .bounceOnAppear(delay: 0.12)
+
+                    peopleSection
+                        .bounceOnAppear(delay: 0.14)
+
+                    optionalDetailsToggle
+                        .bounceOnAppear(delay: 0.16)
+
                     if showOptionalDetails {
-                        optionalDetails
+                        noteSection
                             .transition(.opacity.combined(with: .move(edge: .top)))
-                            .bounceOnAppear(delay: 0.1)
+                            .bounceOnAppear(delay: 0.18)
                     }
 
                     PrimaryButton(
@@ -391,10 +412,10 @@ struct AddMemoryView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(showOptionalDetails ? "Hide details" : "Add details")
+                    Text(showOptionalDetails ? "Hide note" : "Add a note")
                         .font(AppFont.headline)
                         .foregroundColor(AppColor.ink)
-                    Text("Mood, best bite, tags, people, and note")
+                    Text("Anything else worth keeping in your own words")
                         .font(AppFont.caption)
                         .foregroundColor(AppColor.inkMuted)
                         .lineLimit(1)
@@ -411,16 +432,6 @@ struct AddMemoryView: View {
         }
         .buttonStyle(.plain)
         .pressableScale(0.98)
-    }
-
-    private var optionalDetails: some View {
-        VStack(spacing: AppSpacing.xl) {
-            moodSection
-            memorableSection
-            bestBiteSection
-            peopleSection
-            noteSection
-        }
     }
 
     // MARK: - Date
@@ -495,6 +506,104 @@ struct AddMemoryView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Location hint (same place suggestion)
+
+    private var locationSuggestionMemory: Memory? {
+        let normalized = location
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard normalized.count >= 2 else { return nil }
+
+        let editingID = memoryToEdit?.id
+
+        let matches = existingMemories.filter { memory in
+            guard memory.id != editingID,
+                  let loc = memory.location?.lowercased(),
+                  !loc.isEmpty else { return false }
+            return loc.contains(normalized) || normalized.contains(loc)
+        }
+        return matches.sorted { $0.date > $1.date }.first
+    }
+
+    private func locationHintCard(for memory: Memory) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.clash(11, weight: .bold))
+                    .foregroundStyle(AppGradient.hero)
+                Text("YOU'VE BEEN HERE BEFORE")
+                    .font(.clash(10, weight: .semibold))
+                    .tracking(1.2)
+                    .foregroundStyle(AppGradient.hero)
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 6) {
+                Text(timeAgoLabel(from: memory.date))
+                    .font(.clash(13, weight: .semibold))
+                    .foregroundColor(AppColor.ink)
+                Text("·")
+                    .foregroundColor(AppColor.inkFaint)
+                Text(memory.title)
+                    .font(.clash(13, weight: .medium))
+                    .foregroundColor(AppColor.inkMuted)
+                    .lineLimit(1)
+            }
+
+            if memory.mood != nil || !(memory.bestBite ?? "").isEmpty {
+                HStack(spacing: 8) {
+                    if let mood = memory.mood {
+                        HStack(spacing: 4) {
+                            Text(mood.emoji).font(.system(size: 12))
+                            Text("felt \(mood.label.lowercased())")
+                                .font(.clash(11, weight: .medium))
+                                .foregroundColor(AppColor.inkMuted)
+                        }
+                    }
+                    if let bite = memory.bestBite, !bite.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "fork.knife")
+                                .font(.clash(9, weight: .semibold))
+                                .foregroundColor(AppColor.accent)
+                            Text(bite)
+                                .font(.clash(11, weight: .medium))
+                                .foregroundColor(AppColor.inkMuted)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, AppSpacing.m)
+        .padding(.vertical, AppSpacing.s)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
+                .stroke(AppColor.primary.opacity(0.35), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.04), radius: 5, y: 2)
+    }
+
+    private func timeAgoLabel(from date: Date) -> String {
+        let interval = Date().timeIntervalSince(date)
+        let days = Int(interval / 86400)
+        switch days {
+        case ..<1:    return "earlier today"
+        case 1:       return "yesterday"
+        case 2..<7:   return "\(days) days ago"
+        case 7..<14:  return "a week ago"
+        case 14..<30: return "\(days / 7) weeks ago"
+        case 30..<60: return "a month ago"
+        case 60..<365:
+            let months = days / 30
+            return "\(months) months ago"
+        default:
+            let years = days / 365
+            return years == 1 ? "a year ago" : "\(years) years ago"
+        }
     }
 
     private var trimmedLocation: String {

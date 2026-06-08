@@ -90,26 +90,22 @@ struct MemoryDetailView: View {
                     )
                     .bounceOnAppear(delay: 0.06)
 
-                    MemoryLocationRow(memory: memory)
+                    MemoryMoodCard(memory: memory)
                         .bounceOnAppear(delay: 0.1)
-
-                    MemoryCapturedByRow(
-                        capturedByName: capturedByName,
-                        capturedByAvatar: capturedByAvatar
-                    )
-                    .bounceOnAppear(delay: 0.14)
-
-                    MemoryNoteCard(
-                        memory: memory,
-                        canEditMemory: canEditMemory,
-                        onEditNote: openNoteEditor
-                    )
-                    .bounceOnAppear(delay: 0.18)
 
                     MemoryExtrasCard(
                         memory: memory,
                         friendName: friendName(for:),
                         friendAvatarImage: friendAvatarImage(for:)
+                    )
+                    .bounceOnAppear(delay: 0.14)
+
+                    MemoryLocationRow(memory: memory)
+                        .bounceOnAppear(delay: 0.18)
+
+                    MemoryCapturedByRow(
+                        capturedByName: capturedByName,
+                        capturedByAvatar: capturedByAvatar
                     )
                     .bounceOnAppear(delay: 0.22)
 
@@ -122,8 +118,15 @@ struct MemoryDetailView: View {
                     )
                     .bounceOnAppear(delay: 0.26)
 
+                    MemoryNoteCard(
+                        memory: memory,
+                        canEditMemory: canEditMemory,
+                        onEditNote: openNoteEditor
+                    )
+                    .bounceOnAppear(delay: 0.30)
+
                     MemorySimilarSection(similarMemories: similarMemories)
-                        .bounceOnAppear(delay: 0.32)
+                        .bounceOnAppear(delay: 0.34)
                 }
                 .padding(AppSpacing.xl)
             }

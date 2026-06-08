@@ -14,6 +14,7 @@ import FirebaseFirestore
 @MainActor
 final class AlbumsViewModel: ObservableObject {
     @Published var albums: [Album] = []
+    @Published var memories: [Memory] = []
     @Published var memoryCount = 0
     @Published var errorMessage: String?
     @Published var isLoading = false
@@ -27,8 +28,8 @@ final class AlbumsViewModel: ObservableObject {
     private var friendListener: ListenerRegistration?
     private var ownedAlbums: [String: Album] = [:]
     private var friendAlbums: [String: Album] = [:]
-    private var memoryCountListeners: [ListenerRegistration] = []
-    private var memoryCountsByChunk: [Int: Int] = [:]
+    private var memoryListeners: [ListenerRegistration] = []
+    private var memoriesByChunk: [Int: [Memory]] = [:]
     private var currentUserID: String?
 
 
@@ -36,7 +37,7 @@ final class AlbumsViewModel: ObservableObject {
     deinit {
         ownedListener?.remove()
         friendListener?.remove()
-        memoryCountListeners.forEach { $0.remove() }
+        memoryListeners.forEach { $0.remove() }
     }
 
     /// Listen to albums where the user is the owner OR is tagged as a friend.
@@ -68,9 +69,10 @@ final class AlbumsViewModel: ObservableObject {
         friendListener?.remove()
         ownedListener = nil
         friendListener = nil
-        memoryCountListeners.forEach { $0.remove() }
-        memoryCountListeners = []
-        memoryCountsByChunk = [:]
+        memoryListeners.forEach { $0.remove() }
+        memoryListeners = []
+        memoriesByChunk = [:]
+        memories = []
         memoryCount = 0
         currentUserID = nil
         ownedAlbums = [:]
@@ -116,13 +118,14 @@ final class AlbumsViewModel: ObservableObject {
             merged[id] = album
         }
         albums = merged.values.sorted { $0.updatedAt > $1.updatedAt }
-        startMemoryCountListeners(forAlbumIDs: albums.map(\.id))
+        startMemoryListeners(forAlbumIDs: albums.map(\.id))
     }
 
-    private func startMemoryCountListeners(forAlbumIDs albumIDs: [String]) {
-        memoryCountListeners.forEach { $0.remove() }
-        memoryCountListeners = []
-        memoryCountsByChunk = [:]
+    private func startMemoryListeners(forAlbumIDs albumIDs: [String]) {
+        memoryListeners.forEach { $0.remove() }
+        memoryListeners = []
+        memoriesByChunk = [:]
+        memories = []
         memoryCount = 0
 
         guard !albumIDs.isEmpty else { return }
@@ -134,16 +137,25 @@ final class AlbumsViewModel: ObservableObject {
                     Task { @MainActor in
                         guard let self else { return }
                         if let error {
-                            print("[AlbumsViewModel] memory count error: \(error)")
+                            print("[AlbumsViewModel] memory listen error: \(error)")
                             self.errorMessage = error.localizedDescription
                             return
                         }
-                        self.memoryCountsByChunk[index] = snapshot?.documents.count ?? 0
-                        self.memoryCount = self.memoryCountsByChunk.values.reduce(0, +)
+                        let decoded: [Memory] = snapshot?.documents.compactMap { doc in
+                            try? doc.data(as: Memory.self)
+                        } ?? []
+                        self.memoriesByChunk[index] = decoded
+                        self.publishMergedMemories()
                     }
                 }
-            memoryCountListeners.append(listener)
+            memoryListeners.append(listener)
         }
+    }
+
+    private func publishMergedMemories() {
+        let merged = memoriesByChunk.values.flatMap { $0 }
+        memories = merged.sorted { $0.date > $1.date }
+        memoryCount = merged.count
     }
 
     func add(_ album: Album) async {
