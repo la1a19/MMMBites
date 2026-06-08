@@ -21,7 +21,7 @@ struct MMMBitesApp: App {
         WindowGroup {
             Group {
                 if authViewModel.isLoggedIn {
-                    AlbumsView()
+                    MainAlbumsContainerView()
                 } else {
                     WelcomeView()
                 }

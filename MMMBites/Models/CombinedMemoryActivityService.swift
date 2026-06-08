@@ -4,7 +4,6 @@
 //
 //  Created by Yat Tin lee on 8/6/2026.
 //
-
 import Foundation
 
 @MainActor
@@ -27,8 +26,8 @@ final class CombinedMemoryActivityService: MemoryActivityProviding {
             let backendActivities = await backendService.latestActivities(for: memories)
 
             for (memoryId, activity) in backendActivities {
-                // Backend activity should override fake demo activity
-                // if they are for the same memory.
+                // Real backend activity should override fake demo activity
+                // if both exist for the same memory.
                 combinedActivities[memoryId] = activity
             }
         }

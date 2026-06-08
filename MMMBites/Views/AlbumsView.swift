@@ -11,13 +11,9 @@ struct AlbumsView: View {
     @EnvironmentObject var authViewModel: LoginViewModel
 
     // Mock data for now. Replace with data from a ViewModel + Firestore later.
-    @State private var albums: [Album] = MockData.allAlbums
-    @State private var albumMemories: [String: [Memory]] = Dictionary(
-        uniqueKeysWithValues: MockData.allAlbums.map { album in
-            (album.id, MockData.memories(forAlbumId: album.id))
-        }
-    )
-
+    @Binding var albums: [Album]
+    @Binding var albumMemories: [String: [Memory]]
+    
     @State private var searchText = ""
     @State private var showFilters = false
     @State private var selectedTags: Set<String> = []
@@ -26,8 +22,25 @@ struct AlbumsView: View {
     @State private var showGridView = false
     @State private var showProfile = false
     @State private var showSettings = false
+    @State private var showMemoryBoard = false
     @State private var profilePhotoData: Data?
 
+    
+    //This lets AlbumsView receive shared data from MainAlbumsContainerView, while still keeping preview compatibility.
+    init(
+        albums: Binding<[Album]> = .constant(MockData.allAlbums),
+        albumMemories: Binding<[String: [Memory]]> = .constant(
+            Dictionary(
+                uniqueKeysWithValues: MockData.allAlbums.map { album in
+                    (album.id, MockData.memories(forAlbumId: album.id))
+                }
+            )
+        )
+    ) {
+        self._albums = albums
+        self._albumMemories = albumMemories
+    }
+    
     // All filter options shown when the filter panel is open
     private let filterOptions = ["Picnic", "Friends", "Cozy", "Dinner", "Spicy", "Special"]
 
@@ -97,6 +110,15 @@ struct AlbumsView: View {
                 .padding(.horizontal, AppSpacing.xl)
                 .padding(.top, AppSpacing.s)
             }
+            .fullScreenCover(isPresented: $showMemoryBoard) {
+                NavigationStack {
+                    UnlimitedMemoryBoardView(
+                        albums: albums,
+                        albumMemories: $albumMemories,
+                        showUnlimitedBoard: $showMemoryBoard
+                    )
+                }
+            }
             .sheet(isPresented: $showAddAlbum) {
                 NavigationStack {
                     AddAlbumView { album in
@@ -148,9 +170,9 @@ struct AlbumsView: View {
         HStack {
             Button {
                 Haptics.tap()
-                withAnimation(AppAnimation.snappy) { showGridView.toggle() }
+                showMemoryBoard = true
             } label: {
-                Image(systemName: showGridView ? "rectangle.stack.fill" : "square.grid.2x2.fill")
+                Image(systemName: "rectangle.3.group.bubble.left.fill")
                     .font(.clash(18, weight: .semibold))
                     .foregroundColor(AppColor.ink)
                     .frame(width: 42, height: 42)
@@ -266,19 +288,7 @@ struct AlbumsView: View {
     // MARK: - Title
 
     private var titleRow: some View {
-<<<<<<< HEAD
-        HStack(alignment: .center) {
-            Text("User's\nAlbums")
-                .font(.system(size: 34, weight: .bold))
-                .multilineTextAlignment(.leading)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
 
-            Spacer()
-
-            GlassAddButton {
-                // create new album
-=======
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Your")
@@ -305,7 +315,7 @@ struct AlbumsView: View {
                 .background(Capsule().fill(AppGradient.hero))
                 .overlay(Capsule().stroke(Color.white.opacity(0.4), lineWidth: 1))
                 .shadow(color: AppColor.primary.opacity(0.35), radius: 10, y: 6)
->>>>>>> main
+
             }
             .buttonStyle(.plain)
             .pressableScale()
@@ -315,13 +325,7 @@ struct AlbumsView: View {
     }
     // MARK: - Search + filter
     private var searchRow: some View {
-<<<<<<< HEAD
-        SearchFilterBar(
-            searchText: $searchText,
-            showFilters: $showFilters
-        )
-        .padding(.horizontal, 12)
-=======
+
         HStack(spacing: 0) {
             HStack {
                 Image(systemName: "magnifyingglass")
@@ -382,7 +386,6 @@ struct AlbumsView: View {
                     .background(Capsule().fill(AppGradient.hero))
             }
         }
->>>>>>> main
     }
 
     // MARK: - Bubbles carousel
