@@ -16,7 +16,7 @@ struct SearchFilterBar: View {
             HStack(spacing: 0) {
                 // Left search area: 70%
                 HStack {
-                    TextField("Search tag", text: $searchText)
+                    TextField("Search albums or tags", text: $searchText)
 
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(.black)
@@ -40,7 +40,7 @@ struct SearchFilterBar: View {
                     }
                 } label: {
                     Image(systemName: "slider.horizontal.3")
-                        .foregroundColor(.black.opacity(0.75))
+                        .foregroundColor(showFilters ? AppColor.primary : .black.opacity(0.75))
                         .frame(width: geometry.size.width * 0.3, height: 46)
                         .background {
                             UnevenRoundedRectangle(

@@ -47,11 +47,18 @@ struct AlbumsView: View {
     // Albums after applying selected tag filters + search text
     private var filteredAlbums: [Album] {
         albums.filter { album in
-            let matchesTags = selectedTags.isEmpty ||
-                !selectedTags.isDisjoint(with: Set(album.tags.map { $0.capitalized }))
+            let albumTags = Set(album.tags.map { $0.capitalized })
 
-            let matchesSearch = searchText.isEmpty ||
-                album.tags.contains { $0.localizedCaseInsensitiveContains(searchText) }
+            let matchesTags =
+                selectedTags.isEmpty ||
+                !selectedTags.isDisjoint(with: albumTags)
+
+            let matchesSearch =
+                searchText.isEmpty ||
+                album.title.localizedCaseInsensitiveContains(searchText) ||
+                album.tags.contains { tag in
+                    tag.localizedCaseInsensitiveContains(searchText)
+                }
 
             return matchesTags && matchesSearch
         }
@@ -88,16 +95,14 @@ struct AlbumsView: View {
                     header
                         .bounceOnAppear()
 
-                    if showFilters {
-                        filterPills
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-
                     titleRow
                         .bounceOnAppear(delay: 0.05)
 
-                    searchRow
-                        .bounceOnAppear(delay: 0.1)
+                    SearchFilterBar(
+                        searchText: $searchText,
+                        showFilters: $showFilters
+                    )
+                    .bounceOnAppear(delay: 0.1)
 
                     sectionHeader
                         .bounceOnAppear(delay: 0.15)
@@ -288,37 +293,29 @@ struct AlbumsView: View {
     // MARK: - Title
 
     private var titleRow: some View {
-
-        HStack(alignment: .top) {
+        HStack(alignment: .center, spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Your")
                     .font(.clash(30, weight: .semibold))
                     .foregroundColor(AppColor.inkMuted)
+
                 Text("Albums")
                     .font(.clash(40, weight: .black))
                     .foregroundStyle(AppGradient.hero)
             }
-            Spacer()
-            Button {
-                Haptics.soft()
-                showAddAlbum = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "plus")
-                        .font(.clash(16, weight: .bold))
-                    Text("New")
-                        .font(AppFont.subheadline.weight(.semibold))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
-                .background(Capsule().fill(AppGradient.hero))
-                .overlay(Capsule().stroke(Color.white.opacity(0.4), lineWidth: 1))
-                .shadow(color: AppColor.primary.opacity(0.35), radius: 10, y: 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
+            HStack {
+                Spacer()
+
+                GlassAddButton {
+                    Haptics.soft()
+                    showAddAlbum = true
+                }
+
+                Spacer()
             }
-            .buttonStyle(.plain)
-            .pressableScale()
+            .frame(width: 110)
         }
         .frame(maxWidth: .infinity, minHeight: 90, alignment: .center)
         .padding(.horizontal, 12)
