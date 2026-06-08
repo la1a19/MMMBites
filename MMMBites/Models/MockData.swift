@@ -17,7 +17,7 @@ enum MockData {
         id: "park",
         title: "Park",
         ownerId: "jisu",
-        tags: ["Picnic", "Friends", "Outdoor", "Park"],
+        tags: ["Picnic", "Outdoor", "Brunch"],
         location: "Centennial Park, Sydney",
         date: daysAgo(7),
         friendIds: ["Jisu", "Ada", "Tin"]
@@ -27,7 +27,7 @@ enum MockData {
         id: "comfort",
         title: "Comfort Food",
         ownerId: "jisu",
-        tags: ["Pasta", "Comfort", "Cozy", "Dinner"],
+        tags: ["Italian", "Dinner", "Home Cooking"],
         location: "Surry Hills, Sydney",
         date: daysAgo(12),
         friendIds: ["Jisu", "Mia"]
@@ -37,7 +37,7 @@ enum MockData {
         id: "fun",
         title: "Fun Meals",
         ownerId: "jisu",
-        tags: ["Spicy", "Friends", "Challenge", "Dinner"],
+        tags: ["Korean", "Dinner", "Late Night"],
         location: "Haymarket, Sydney",
         date: daysAgo(18),
         friendIds: ["Jisu", "Tin", "Leo"]
@@ -47,7 +47,7 @@ enum MockData {
         id: "special",
         title: "Special Moments",
         ownerId: "jisu",
-        tags: ["Birthday", "Dessert", "Friends", "Special"],
+        tags: ["Birthday", "Dessert", "Celebration"],
         location: "Newtown, Sydney",
         date: daysAgo(3),
         friendIds: ["Jisu", "Ada", "Mia"]
@@ -73,9 +73,9 @@ enum MockData {
                 Reaction(userId: "tin",  emoji: "🫶"),
                 Reaction(userId: "jisu", emoji: "✨")
             ],
-            mood: .chill,
+            mood: .relaxing,
             bestBite: "Fairy bread",
-            memorableReasons: [.friends, .atmosphere, .food],
+            memorableTags: ["Friends", "Atmosphere", "Food"],
             participantIds: ["Jisu", "Ada", "Tin"],
             date: daysAgo(7)
         ),
@@ -94,9 +94,9 @@ enum MockData {
                 Reaction(userId: "ada",  emoji: "✨"),
                 Reaction(userId: "jisu", emoji: "🍓")
             ],
-            mood: .chill,
+            mood: .relaxing,
             bestBite: "Strawberries",
-            memorableReasons: [.atmosphere, .conversation],
+            memorableTags: ["Atmosphere", "Conversation"],
             participantIds: ["Jisu", "Ada"],
             date: daysAgo(6)
         ),
@@ -117,7 +117,7 @@ enum MockData {
             ],
             mood: .cozy,
             bestBite: "Cream pasta",
-            memorableReasons: [.food, .conversation, .atmosphere],
+            memorableTags: ["Food", "Conversation", "Atmosphere"],
             participantIds: ["Jisu", "Mia"],
             date: daysAgo(12)
         ),
@@ -138,7 +138,7 @@ enum MockData {
             ],
             mood: .chaotic,
             bestBite: "Spicy noodles",
-            memorableReasons: [.friends, .surprise, .food],
+            memorableTags: ["Friends", "Surprise", "Food"],
             participantIds: ["Jisu", "Tin", "Leo"],
             date: daysAgo(18)
         ),
@@ -158,9 +158,9 @@ enum MockData {
                 Reaction(userId: "mia",  emoji: "✨"),
                 Reaction(userId: "jisu", emoji: "🫶")
             ],
-            mood: .special,
+            mood: .celebratory,
             bestBite: "Strawberry cake",
-            memorableReasons: [.friends, .surprise, .food],
+            memorableTags: ["Friends", "Surprise", "Food"],
             participantIds: ["Jisu", "Ada", "Mia"],
             date: daysAgo(3)
         )

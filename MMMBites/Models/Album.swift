@@ -12,7 +12,7 @@ struct Album: Identifiable, Codable, Hashable {
     var title: String
     var description: String?
     var coverImageURL: String?
-    var coverPhotoData: Data?
+    var coverPhotoData: Data? = nil    // locally picked cover — never persisted
     var ownerId: String
     var tags: [String]
     var location: String?
@@ -22,6 +22,13 @@ struct Album: Identifiable, Codable, Hashable {
     var friendIds: [String]
     var createdAt: Date
     var updatedAt: Date
+
+    // Exclude raw cover bytes from Firestore so a large cover never
+    // prevents the album document itself from saving.
+    enum CodingKeys: String, CodingKey {
+        case id, title, description, coverImageURL, ownerId, tags, location
+        case latitude, longitude, date, friendIds, createdAt, updatedAt
+    }
 
     init(
         id: String = UUID().uuidString,
@@ -54,4 +61,25 @@ struct Album: Identifiable, Codable, Hashable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
+}
+
+enum AlbumTagDefaults {
+    static let filters = ["Cafe", "Dinner", "Brunch", "Dessert", "Korean", "Birthday"]
+
+    static let all = [
+        "Cafe",
+        "Dinner",
+        "Brunch",
+        "Dessert",
+        "Korean",
+        "Japanese",
+        "Italian",
+        "Home Cooking",
+        "Picnic",
+        "Outdoor",
+        "Birthday",
+        "Celebration",
+        "Date Night",
+        "Travel"
+    ]
 }

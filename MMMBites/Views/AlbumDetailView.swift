@@ -6,142 +6,71 @@
 //
 
 import SwiftUI
+import MapKit
+import FirebaseFirestore
 
 struct AlbumDetailView: View {
     @State private var album: Album
-    var onMemoriesChange: (([Memory]) -> Void)?
+    private let initialMemories: [Memory]
+    let crossAlbumMemories: [Memory]
     var onAlbumUpdate: ((Album) -> Void)?
+    var onAlbumDelete: ((Album) -> Void)?
 
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var authViewModel: LoginViewModel
+    @StateObject private var memoriesViewModel = MemoriesViewModel()
     @State private var searchText = ""
-    @State private var memories: [Memory]
     @State private var showEditAlbum = false
+    @State private var friendUsers: [User] = []
+    @State private var isBubbleCanvasExpanded = false
+    @State private var bubbleOffsets: [String: CGSize] = [:]
+    @GestureState private var activeBubbleDrag: BubbleDragState? = nil
+
+    private struct BubbleDragState: Equatable {
+        let id: String
+        let translation: CGSize
+    }
 
     init(
         album: Album,
         initialMemories: [Memory]? = nil,
-        onMemoriesChange: (([Memory]) -> Void)? = nil,
-        onAlbumUpdate: ((Album) -> Void)? = nil
+        crossAlbumMemories: [Memory] = [],
+        onAlbumUpdate: ((Album) -> Void)? = nil,
+        onAlbumDelete: ((Album) -> Void)? = nil
     ) {
         _album = State(initialValue: album)
-        self.onMemoriesChange = onMemoriesChange
         self.onAlbumUpdate = onAlbumUpdate
-        // Pull from the shared mock store so cross-album similarity works.
-        // Fallback to per-album mock memories if the album isn't in the store yet.
-        let stored = initialMemories ?? MockData.memories(forAlbumId: album.id)
-        if stored.isEmpty {
-            let isMockAlbum = MockData.album(id: album.id) != nil
-            _memories = State(initialValue: isMockAlbum ? Self.makeMockMemories(forAlbumId: album.id) : [])
-        } else {
-            _memories = State(initialValue: stored)
+        self.onAlbumDelete = onAlbumDelete
+        self.initialMemories = initialMemories ?? []
+        self.crossAlbumMemories = crossAlbumMemories
+    }
+
+    private var currentUserID: String? {
+        authViewModel.currentUser?.id
+    }
+
+    private var canEditAlbum: Bool {
+        album.ownerId == currentUserID
+    }
+
+    private var memories: [Memory] {
+        memoriesViewModel.memories.isEmpty ? initialMemories : memoriesViewModel.memories
+    }
+
+    private var locationHintMemories: [Memory] {
+        var seenIDs: Set<String> = []
+        return (memories + crossAlbumMemories).filter { memory in
+            seenIDs.insert(memory.id).inserted
         }
     }
 
-    // Legacy mock memories — only used if the album isn't in MockData (e.g. brand new albums).
-    private static func makeMockMemories(forAlbumId albumId: String) -> [Memory] {
-        [
-            Memory(
-                albumId: albumId,
-                title: "Picnic Fun",
-                note: "We had so much fun at the park today, I went with my super amazing friends and we ate super good food. Everyone brought their own food, I brought fairy bread and everyone said it was super good.",
-                location: "Centennial Park, Sydney",
-                capturedById: "Jisu",
-                reactions: [
-                    Reaction(userId: "jisu", emoji: "❤️"),
-                    Reaction(userId: "ada",  emoji: "😋"),
-                    Reaction(userId: "tin",  emoji: "😋")
-                ],
-                mood: .fun,
-                bestBite: "Fairy bread, no question",
-                memorableReasons: [.friends, .food, .atmosphere],
-                participantIds: ["Judy", "Mira", "Alex"]
-            ),
-            Memory(
-                albumId: albumId,
-                title: "Sandwiches",
-                note: "Ham and cheese, the classic. Mira packed extras for everyone — way too generous.",
-                location: "Centennial Park, Sydney",
-                capturedById: "Mira",
-                reactions: [Reaction(userId: "jisu", emoji: "👍")],
-                mood: .chill,
-                bestBite: "Mira's leftover sandwich corners",
-                memorableReasons: [.food, .friends],
-                participantIds: ["Mira"]
-            ),
-            Memory(
-                albumId: albumId,
-                title: "Park fun",
-                note: "Frisbee, sunshine, and the world's slowest jog. Best Sunday in a while.",
-                location: "Centennial Park, Sydney",
-                capturedById: "Alex",
-                reactions: [Reaction(userId: "ada", emoji: "🔥")],
-                mood: .fun,
-                memorableReasons: [.atmosphere, .friends],
-                participantIds: ["Alex", "Mira"]
-            ),
-            Memory(
-                albumId: albumId,
-                title: "Outdoors",
-                location: "Centennial Park, Sydney",
-                capturedById: "Sam",
-                mood: .chill,
-                memorableReasons: [.place],
-                participantIds: ["Sam"]
-            ),
-            Memory(
-                albumId: albumId,
-                title: "Snacks",
-                note: "Chips, fruit, more chips. A balanced meal.",
-                capturedById: "Jisu",
-                reactions: [Reaction(userId: "lila", emoji: "😂")],
-                mood: .comfort,
-                bestBite: "Salt-and-vinegar chips",
-                memorableReasons: [.food],
-                participantIds: ["Lila"]
-            ),
-            Memory(
-                albumId: albumId,
-                title: "Desserts",
-                note: "Fairy bread won. As it always does.",
-                capturedById: "Lila",
-                reactions: [
-                    Reaction(userId: "jisu", emoji: "❤️"),
-                    Reaction(userId: "ada",  emoji: "❤️")
-                ],
-                mood: .special,
-                bestBite: "Fairy bread (again)",
-                memorableReasons: [.food, .conversation],
-                participantIds: ["Lila", "Ada"]
-            )
-        ]
-    }
-
-    // Full corpus used for similarity scoring (this album + everything from MockData).
-    // De-duplicates on id so the current album's memories aren't counted twice.
-    private var allAlbums: [Album] {
-        var byId: [String: Album] = [:]
-        byId[album.id] = album
-        for a in MockData.allAlbums where byId[a.id] == nil {
-            byId[a.id] = a
-        }
-        return Array(byId.values)
-    }
-
-    private var allMemories: [Memory] {
-        var byId: [String: Memory] = [:]
-        for m in memories { byId[m.id] = m }
-        for m in MockData.memories(excludingAlbumId: album.id) where byId[m.id] == nil {
-            byId[m.id] = m
-        }
-        return Array(byId.values)
-    }
-
-    /// Up to 3 scored similar memories for `memory`, with fallbacks.
+    /// Up to 3 related memories from the same real album.
     private func similarMemories(for memory: Memory) -> [SimilarMemoryEntry] {
         MemorySimilarity.similarMemories(
             for: memory,
             in: album,
-            allMemories: allMemories,
-            allAlbums: allAlbums
+            allMemories: memories,
+            allAlbums: [album]
         )
     }
 
@@ -150,7 +79,7 @@ struct AlbumDetailView: View {
         if searchText.isEmpty {
             return memories
         }
-        return memories.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
+        return memories.filter(memoryMatchesSearch(_:))
     }
 
     private var totalReactionCount: Int {
@@ -161,6 +90,50 @@ struct AlbumDetailView: View {
         Set(memories.flatMap(\.participantIds)).count
     }
 
+    private var participantIDs: [String] {
+        var ids = Set(album.friendIds + memories.flatMap(\.participantIds) + memories.compactMap(\.capturedById))
+        ids.insert(album.ownerId)
+        return Array(ids).sorted()
+    }
+
+    private var ownerDisplayName: String {
+        if album.ownerId == currentUserID {
+            return authViewModel.currentUser?.username ?? "User"
+        }
+        return friendUsers.first(where: { $0.id == album.ownerId })?.username ?? "Friend"
+    }
+
+    private var ownerAvatarImage: Image? {
+        let base64: String?
+        if album.ownerId == currentUserID {
+            base64 = authViewModel.currentUser?.avatarData
+        } else {
+            base64 = friendUsers.first(where: { $0.id == album.ownerId })?.avatarData
+        }
+        guard
+            let base64,
+            let data = Data(base64Encoded: base64),
+            let uiImage = UIImage(data: data)
+        else { return nil }
+        return Image(uiImage: uiImage)
+    }
+
+    @ViewBuilder
+    private var ownerByLine: some View {
+        HStack(spacing: 6) {
+            AvatarView(
+                avatar: ownerAvatarImage,
+                initials: ownerDisplayName,
+                size: 22
+            )
+            Text("by \(ownerDisplayName)")
+                .font(AppFont.caption.weight(.semibold))
+                .foregroundColor(hasCoverArt ? .white.opacity(0.95) : AppColor.inkMuted)
+                .shadow(color: hasCoverArt ? .black.opacity(0.45) : .clear, radius: 4, y: 1)
+                .lineLimit(1)
+        }
+    }
+
     var body: some View {
         ZStack {
             AppBackground()
@@ -168,152 +141,64 @@ struct AlbumDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: AppSpacing.xl) {
 
-                    // Title + location
-                    VStack(alignment: .leading, spacing: AppSpacing.s) {
-                        Text(album.title)
-                            .font(AppFont.displayLarge)
-                            .foregroundStyle(AppGradient.hero)
+                    if isBubbleCanvasExpanded {
+                        compactAlbumBar
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    } else {
+                        albumHeaderCard
+                            .bounceOnAppear()
 
-                        if let location = album.location {
-                            HStack(spacing: 6) {
-                                Image(systemName: "mappin.and.ellipse")
-                                    .foregroundColor(AppColor.primary)
-                                Text(location)
-                                    .font(AppFont.subheadline)
-                                    .foregroundColor(AppColor.inkMuted)
-                            }
-                        }
+                        albumActionRow
+                            .bounceOnAppear(delay: 0.05)
 
-                        if !album.tags.isEmpty {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 8) {
-                                    ForEach(album.tags, id: \.self) { tag in
-                                        Text(tag)
-                                            .font(AppFont.captionBold)
-                                            .lineLimit(1)
-                                            .fixedSize(horizontal: true, vertical: false)
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 6)
-                                            .background(Capsule().fill(AppColor.tag(tag)))
-                                            .shadow(color: AppColor.tag(tag).opacity(0.4), radius: 4, y: 2)
-                                    }
-                                }
-                            }
-                        }
+                        searchField
+                            .bounceOnAppear(delay: 0.1)
+
+                        summaryRow
+                            .bounceOnAppear(delay: 0.12)
                     }
-                    .bounceOnAppear()
 
-                    // Participants + Add Memory
-                    HStack {
-                        // Participant avatars (placeholder)
-                        HStack(spacing: -10) {
-                            ForEach(0..<3, id: \.self) { _ in
-                                AvatarView(size: 34, showRing: true)
-                            }
-                            Text("+3")
-                                .font(AppFont.captionBold)
-                                .foregroundColor(.white)
-                                .frame(width: 34, height: 34)
-                                .background(Circle().fill(AppColor.secondary))
-                                .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                        }
-
-                        Spacer()
-
-                        // Start a Meal Memory -> AddMemoryView
-                        NavigationLink {
-                            AddMemoryView(album: album) { newMemory in
-                                withAnimation(AppAnimation.snappy) {
-                                    memories.insert(newMemory, at: 0)
-                                }
-                                onMemoriesChange?(memories)
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "fork.knife")
-                                    .font(.clash(13, weight: .bold))
-                                Text("Start a Meal Memory")
-                                    .font(AppFont.subheadline.weight(.semibold))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .background(Capsule().fill(AppGradient.hero))
-                            .shadow(color: AppColor.primary.opacity(0.35), radius: 8, y: 4)
-                        }
-                        .buttonStyle(.plain)
-                        .pressableScale()
-                    }
-                    .bounceOnAppear(delay: 0.05)
-
-                    // Search
-                    HStack {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(AppColor.inkFaint)
-                        TextField("Search memories", text: $searchText)
-                            .font(AppFont.body)
-                            .autocorrectionDisabled()
-                        if !searchText.isEmpty {
-                            Button {
-                                searchText = ""
-                                Haptics.tap()
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(AppColor.inkFaint)
-                            }
-                            .buttonStyle(.plain)
-                            .transition(.scale.combined(with: .opacity))
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(Color.white.opacity(0.9), in: Capsule(style: .continuous))
-                    .overlay(Capsule().stroke(Color.white.opacity(0.7), lineWidth: 1))
-                    .shadow(color: .black.opacity(0.06), radius: 8, y: 3)
-                    .animation(AppAnimation.snappy, value: searchText)
-                    .bounceOnAppear(delay: 0.1)
-
-                    // Summary chip
-                    HStack(spacing: AppSpacing.s) {
-                        summaryChip(icon: "photo.stack.fill", title: "\(memories.count)", subtitle: "memories")
-                        summaryChip(icon: "heart.fill", title: "\(totalReactionCount)", subtitle: "reactions", tint: AppColor.primary)
-                        summaryChip(icon: "person.2.fill", title: "\(participantCount)", subtitle: "people", tint: AppColor.secondary)
-                    }
-                    .bounceOnAppear(delay: 0.12)
-
-                    // Memories grid (2 columns)
+                    // Memories live on a draggable free-form canvas, so they
+                    // can sit partly off-screen and be pulled into view.
                     if filteredMemories.isEmpty {
                         emptyState
                     } else {
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: AppSpacing.xl) {
-                            ForEach(Array(filteredMemories.enumerated()), id: \.element.id) { index, memory in
-                                memoryBubble(memory)
-                                    .bounceOnAppear(delay: 0.15 + Double(index) * 0.04)
-                            }
-                        }
-                        .padding(.top, AppSpacing.s)
+                        freeformMemoryCanvas
+                            .padding(.top, AppSpacing.s)
                     }
                 }
                 .padding(AppSpacing.xl)
+                .animation(AppAnimation.snappy, value: isBubbleCanvasExpanded)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Haptics.tap()
-                    showEditAlbum = true
-                } label: {
-                    Image(systemName: "square.and.pencil")
-                        .font(.clash(16, weight: .semibold))
-                        .foregroundColor(AppColor.ink)
-                        .frame(width: 34, height: 34)
-                        .background(AppGradient.glass, in: Circle())
-                        .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
-                        .shadow(color: .black.opacity(0.06), radius: 6, y: 3)
+            if canEditAlbum {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            Haptics.tap()
+                            showEditAlbum = true
+                        } label: {
+                            Label("Edit album", systemImage: "square.and.pencil")
+                        }
+
+                        Button(role: .destructive) {
+                            Haptics.warning()
+                            onAlbumDelete?(album)
+                            dismiss()
+                        } label: {
+                            Label("Delete album", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle.fill")
+                            .font(.clash(16, weight: .semibold))
+                            .foregroundColor(AppColor.ink)
+                            .frame(width: 34, height: 34)
+                            .glassCircleSurface()
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
         .sheet(isPresented: $showEditAlbum) {
@@ -326,6 +211,338 @@ struct AlbumDetailView: View {
                 }
             }
         }
+        .task(id: album.id) {
+            memoriesViewModel.startListening(forAlbumID: album.id)
+        }
+        .task(id: participantIDs) {
+            await loadUsers()
+        }
+        .alert(
+            "Couldn't sync memories",
+            isPresented: Binding(
+                get: { memoriesViewModel.errorMessage != nil },
+                set: { if !$0 { memoriesViewModel.errorMessage = nil } }
+            ),
+            presenting: memoriesViewModel.errorMessage
+        ) { _ in
+            Button("OK", role: .cancel) { memoriesViewModel.errorMessage = nil }
+        } message: { message in
+            Text(message)
+        }
+    }
+
+    // MARK: - Header card
+
+    private var hasCoverArt: Bool {
+        if album.coverPhotoData != nil { return true }
+        if let url = album.coverImageURL, !url.isEmpty { return true }
+        return false
+    }
+
+    @ViewBuilder
+    private var albumHeaderCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.s) {
+            albumTitleText
+
+            ownerByLine
+
+            if let location = album.location, !location.isEmpty {
+                Button {
+                    openLocationInMaps(location)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "mappin.and.ellipse")
+                            .foregroundColor(hasCoverArt ? Color.white.opacity(0.95) : AppColor.primary)
+                        Text(location)
+                            .font(AppFont.subheadline.weight(.semibold))
+                            .foregroundColor(hasCoverArt ? .white : AppColor.inkMuted)
+                            .shadow(color: hasCoverArt ? .black.opacity(0.45) : .clear, radius: 4, y: 1)
+                        Image(systemName: "arrow.up.right")
+                            .font(.clash(10, weight: .bold))
+                            .foregroundColor(hasCoverArt ? Color.white.opacity(0.85) : AppColor.primary.opacity(0.8))
+                    }
+                }
+                .buttonStyle(.plain)
+                .pressableScale(0.97)
+            }
+
+            if !album.tags.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(album.tags, id: \.self) { tag in
+                            Text(tag)
+                                .font(AppFont.captionBold)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Capsule().fill(AppColor.tag(tag)))
+                                .shadow(color: AppColor.tag(tag).opacity(0.45), radius: 4, y: 2)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(hasCoverArt ? AppSpacing.l : 0)
+        .background(coverCardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.l, style: .continuous))
+        .overlay {
+            if hasCoverArt {
+                RoundedRectangle(cornerRadius: AppRadius.l, style: .continuous)
+                    .stroke(Color.white.opacity(0.45), lineWidth: 1)
+            }
+        }
+        .shadow(color: hasCoverArt ? .black.opacity(0.18) : .clear, radius: 16, y: 8)
+    }
+
+    @ViewBuilder
+    private var albumTitleText: some View {
+        if hasCoverArt {
+            Text(album.title)
+                .font(AppFont.displayLarge)
+                .foregroundColor(.white)
+                .shadow(color: .black.opacity(0.55), radius: 10, y: 2)
+        } else {
+            Text(album.title)
+                .font(AppFont.displayLarge)
+                .foregroundStyle(AppGradient.hero)
+        }
+    }
+
+    private func openLocationInMaps(_ location: String) {
+        Haptics.tap()
+        if let lat = album.latitude, let lon = album.longitude {
+            let mapLocation = CLLocation(latitude: lat, longitude: lon)
+            let item = MKMapItem(location: mapLocation, address: nil)
+            item.name = location
+            item.openInMaps(launchOptions: [
+                MKLaunchOptionsMapTypeKey: NSNumber(value: MKMapType.standard.rawValue)
+            ])
+            return
+        }
+
+        let query = location.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        if let url = URL(string: "http://maps.apple.com/?q=\(query)") {
+            UIApplication.shared.open(url)
+        }
+    }
+
+    @ViewBuilder
+    private var coverCardBackground: some View {
+        if hasCoverArt {
+            ZStack {
+                if let coverData = album.coverPhotoData,
+                   let image = UIImage(data: coverData) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .blur(radius: 2)
+                } else if let urlString = album.coverImageURL,
+                          let url = URL(string: urlString) {
+                    AsyncImage(url: url) { image in
+                        image.resizable().scaledToFill().blur(radius: 2)
+                    } placeholder: {
+                        Rectangle().fill(AppColor.bgMint)
+                    }
+                }
+
+                // Soft gradient — keeps food photo recognisable while still
+                // anchoring contrast for the title and tags.
+                LinearGradient(
+                    stops: [
+                        .init(color: .black.opacity(0.18), location: 0.0),
+                        .init(color: .black.opacity(0.05), location: 0.5),
+                        .init(color: .black.opacity(0.5), location: 1.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+        }
+    }
+
+    // MARK: - User lookup
+
+    private func loadUsers() async {
+        let ids = participantIDs
+        guard !ids.isEmpty else {
+            friendUsers = []
+            return
+        }
+
+        let database = Firestore.firestore()
+        var loaded: [User] = []
+        for chunk in ids.chunked(into: 30) {
+            do {
+                let snapshot = try await database
+                    .collection("users")
+                    .whereField(FieldPath.documentID(), in: chunk)
+                    .getDocuments()
+                loaded.append(contentsOf: snapshot.documents.compactMap {
+                    try? $0.data(as: User.self)
+                })
+            } catch {
+                print("[AlbumDetailView] user load error: \(error)")
+            }
+        }
+        friendUsers = loaded
+    }
+
+    private func userName(for id: String) -> String {
+        friendUsers.first(where: { $0.id == id })?.username ?? id
+    }
+
+    private func userAvatarImage(for id: String) -> Image? {
+        guard
+            let base64 = friendUsers.first(where: { $0.id == id })?.avatarData,
+            let data = Data(base64Encoded: base64),
+            let uiImage = UIImage(data: data)
+        else { return nil }
+        return Image(uiImage: uiImage)
+    }
+
+    private func memoryMatchesSearch(_ memory: Memory) -> Bool {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return true }
+
+        return memory.title.localizedCaseInsensitiveContains(query)
+        || (memory.note?.localizedCaseInsensitiveContains(query) ?? false)
+        || (memory.bestBite?.localizedCaseInsensitiveContains(query) ?? false)
+        || (memory.location?.localizedCaseInsensitiveContains(query) ?? false)
+        || memory.memorableTags.contains { $0.localizedCaseInsensitiveContains(query) }
+        || (memory.mood?.label.localizedCaseInsensitiveContains(query) ?? false)
+    }
+
+    private var compactAlbumBar: some View {
+        HStack(spacing: AppSpacing.m) {
+            Button {
+                withAnimation(AppAnimation.snappy) {
+                    isBubbleCanvasExpanded = false
+                    bubbleOffsets = [:]
+                }
+                Haptics.selection()
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.clash(13, weight: .bold))
+                    .foregroundColor(AppColor.ink)
+                    .frame(width: 32, height: 32)
+                    .glassCircleSurface()
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(album.title)
+                    .font(AppFont.headline)
+                    .foregroundStyle(AppGradient.hero)
+                    .lineLimit(1)
+                Text("\(memories.count) memories")
+                    .font(AppFont.tiny)
+                    .foregroundColor(AppColor.inkFaint)
+            }
+
+            Spacer()
+
+            addMemoryButton(compact: true)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(AppColor.surface.opacity(0.82), in: Capsule(style: .continuous))
+        .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.58), lineWidth: 1))
+        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
+    }
+
+    private var albumActionRow: some View {
+        HStack {
+            HStack(spacing: -10) {
+                ForEach(Array(participantIDs.prefix(3)), id: \.self) { userID in
+                    AvatarView(
+                        avatar: userAvatarImage(for: userID),
+                        initials: userName(for: userID),
+                        size: 34,
+                        showRing: true
+                    )
+                }
+                if participantIDs.count > 3 {
+                    Text("+\(participantIDs.count - 3)")
+                        .font(AppFont.captionBold)
+                        .foregroundColor(.white)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(AppColor.secondary))
+                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                }
+            }
+
+            Spacer()
+
+            addMemoryButton(compact: false)
+        }
+    }
+
+    private var searchField: some View {
+        HStack {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(AppColor.inkFaint)
+            TextField("Search memories", text: $searchText)
+                .font(AppFont.subheadline)
+                .autocorrectionDisabled()
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                    Haptics.tap()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(AppColor.inkFaint)
+                }
+                .buttonStyle(.plain)
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 40)
+        .background(AppColor.surface.opacity(0.86), in: Capsule(style: .continuous))
+        .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.58), lineWidth: 1))
+        .shadow(color: .black.opacity(0.04), radius: 5, y: 2)
+        .animation(AppAnimation.snappy, value: searchText)
+    }
+
+    private var summaryRow: some View {
+        HStack(spacing: AppSpacing.s) {
+            summaryChip(icon: "photo.stack.fill", title: "\(memories.count)", subtitle: "memories")
+            summaryChip(icon: "heart.fill", title: "\(totalReactionCount)", subtitle: "reactions", tint: AppColor.primary)
+            summaryChip(icon: "person.2.fill", title: "\(participantCount)", subtitle: "people", tint: AppColor.secondary)
+        }
+    }
+
+    private func addMemoryButton(compact: Bool) -> some View {
+        NavigationLink {
+            AddMemoryView(
+                album: album,
+                existingMemories: locationHintMemories
+            ) { newMemory in
+                Task {
+                    await memoriesViewModel.add(newMemory)
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "fork.knife")
+                    .font(.clash(compact ? 12 : 13, weight: .bold))
+                if !compact {
+                    Text("Start a Meal Memory")
+                        .font(AppFont.subheadline.weight(.semibold))
+                }
+            }
+            .foregroundColor(.white)
+            .frame(width: compact ? 36 : nil, height: compact ? 36 : nil)
+            .padding(.horizontal, compact ? 0 : 16)
+            .padding(.vertical, compact ? 0 : 12)
+            .background(Capsule().fill(AppGradient.hero))
+            .shadow(color: AppColor.primary.opacity(0.35), radius: 8, y: 4)
+        }
+        .buttonStyle(.plain)
+        .pressableScale()
     }
 
     // MARK: - Summary chip
@@ -349,61 +566,225 @@ struct AlbumDetailView: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
-                .stroke(Color.white.opacity(0.6), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
+        .fieldSurface()
     }
 
     // MARK: - Memory bubble
 
+    // MARK: - Free-form memory canvas
+
+    private var freeformMemoryCanvas: some View {
+        GeometryReader { proxy in
+            let viewportSize = proxy.size
+            let contentSize = viewportSize
+
+            ZStack(alignment: .topLeading) {
+                Color.clear
+                    .contentShape(Rectangle())
+
+                ForEach(Array(filteredMemories.enumerated()), id: \.element.id) { index, memory in
+                    memoryBubble(memory)
+                        .position(bubblePosition(
+                            for: memory,
+                            index: index,
+                            contentSize: contentSize
+                        ))
+                        .offset(bubbleOffset(for: memory.id))
+                        .zIndex(zIndex(for: memory.id))
+                        .bounceOnAppear(delay: 0.12 + Double(index) * 0.035)
+                }
+            }
+            .clipped()
+        }
+        .frame(height: bubbleCanvasViewportHeight(for: filteredMemories.count, expanded: isBubbleCanvasExpanded))
+        .onChange(of: filteredMemories.map(\.id)) { _, ids in
+            // Drop offsets for memories no longer in the album.
+            let validIDs = Set(ids)
+            bubbleOffsets = bubbleOffsets.filter { validIDs.contains($0.key) }
+        }
+    }
+
+    private func bubbleOffset(for id: String) -> CGSize {
+        let base = bubbleOffsets[id] ?? .zero
+        if let active = activeBubbleDrag, active.id == id {
+            return CGSize(
+                width: base.width + active.translation.width,
+                height: base.height + active.translation.height
+            )
+        }
+        return base
+    }
+
+    private func zIndex(for id: String) -> Double {
+        // Active drag floats to the top so it doesn't slip under other bubbles.
+        if activeBubbleDrag?.id == id {
+            return 1000
+        }
+        return Double(stableHash(id) % 100)
+    }
+
+    private func bubbleCanvasViewportHeight(for memoryCount: Int, expanded: Bool) -> CGFloat {
+        if expanded {
+            return 760
+        }
+        return min(660, max(500, CGFloat(memoryCount) * 78 + 260))
+    }
+
+    private func bubblePosition(for memory: Memory, index: Int, contentSize: CGSize) -> CGPoint {
+        let size = photoSize(for: memory.id)
+        let margin = size / 2 + 22
+        let xRange = max(1, contentSize.width - margin * 2)
+        let yRange = max(1, contentSize.height - margin * 2)
+        let x = margin + stableFraction(for: memory.id, salt: 13) * xRange
+        let verticalStep = min(150, yRange / CGFloat(max(filteredMemories.count, 1)))
+        let yJitter = (stableFraction(for: memory.id, salt: 47) - 0.5) * 92
+        let y = margin + 96 + CGFloat(index) * verticalStep + yJitter
+
+        return CGPoint(
+            x: min(max(x, margin), contentSize.width - margin),
+            y: min(max(y, margin), contentSize.height - margin)
+        )
+    }
+
     private func memoryBubble(_ memory: Memory) -> some View {
-        NavigationLink {
+        let size = photoSize(for: memory.id)
+        let avatarTrailing = avatarOnTrailing(for: memory.id)
+
+        return NavigationLink {
             MemoryDetailView(
                 memory: memory,
                 albumTitle: album.title,
                 album: album,
                 similarMemories: similarMemories(for: memory),
                 onUpdate: { updated in
-                    if let idx = memories.firstIndex(where: { $0.id == updated.id }) {
-                        memories[idx] = updated
-                        onMemoriesChange?(memories)
+                    Task {
+                        await memoriesViewModel.update(updated)
+                    }
+                },
+                onDelete: { deleted in
+                    Task {
+                        await memoriesViewModel.remove(deleted)
                     }
                 }
             )
         } label: {
             VStack(spacing: AppSpacing.s) {
-                ZStack {
-                    Circle()
-                        .fill(AppGradient.hero)
-                        .frame(width: 158, height: 158)
-                        .blur(radius: 14)
-                        .opacity(0.3)
-
-                    MemoryPhotoThumbnail(
-                        photoData: memory.photoData,
-                        imageURLs: memory.imageURLs,
-                        width: 150,
-                        height: 150
-                    )
-                }
-                .overlay(Circle().stroke(Color.white, lineWidth: 3))
-                .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
-
-                Text(memory.title)
-                    .font(AppFont.subheadline.weight(.semibold))
-                    .foregroundColor(AppColor.ink)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .background(Color.white, in: Capsule(style: .continuous))
-                    .overlay(Capsule().stroke(Color.white.opacity(0.7), lineWidth: 1))
-                    .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
+                memoryPhotoCircle(memory, size: size)
+                memoryTitlePill(memory, avatarTrailing: avatarTrailing)
+                    .padding(.horizontal, 4)
             }
+            .frame(width: bubbleFrameWidth(for: memory.id))
+            .modifier(FloatingMotion(seed: floatSeed(for: memory.id)))
         }
         .buttonStyle(.plain)
         .pressableScale()
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 8)
+                .updating($activeBubbleDrag) { value, state, _ in
+                    state = BubbleDragState(id: memory.id, translation: value.translation)
+                }
+                .onEnded { value in
+                    let base = bubbleOffsets[memory.id] ?? .zero
+                    bubbleOffsets[memory.id] = CGSize(
+                        width: base.width + value.translation.width,
+                        height: base.height + value.translation.height
+                    )
+                    Haptics.soft()
+                }
+        )
+    }
+
+    private func memoryPhotoCircle(_ memory: Memory, size: CGFloat) -> some View {
+        ZStack {
+            Circle()
+                .fill(AppGradient.hero)
+                .frame(width: size + 8, height: size + 8)
+                .blur(radius: 14)
+                .opacity(0.3)
+
+            MemoryPhotoThumbnail(
+                photoData: memory.photoData,
+                imageURLs: memory.imageURLs,
+                width: size,
+                height: size
+            )
+        }
+        .overlay(Circle().stroke(Color.white, lineWidth: 3))
+        .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
+    }
+
+    private func memoryTitlePill(_ memory: Memory, avatarTrailing: Bool) -> some View {
+        HStack(spacing: 6) {
+            if !avatarTrailing, let capturedById = memory.capturedById {
+                avatarChip(for: capturedById)
+            }
+            Text(memory.title)
+                .font(AppFont.subheadline.weight(.semibold))
+                .foregroundColor(AppColor.ink)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            if avatarTrailing, let capturedById = memory.capturedById {
+                avatarChip(for: capturedById)
+            }
+        }
+        .padding(.leading, (memory.capturedById != nil && !avatarTrailing) ? 6 : 12)
+        .padding(.trailing, (memory.capturedById != nil && avatarTrailing) ? 6 : 12)
+        .padding(.vertical, 5)
+        .background(Color.white, in: Capsule(style: .continuous))
+        .overlay(Capsule().stroke(Color.white.opacity(0.7), lineWidth: 1))
+        .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
+    }
+
+    private func avatarChip(for userID: String) -> some View {
+        AvatarView(
+            avatar: userAvatarImage(for: userID),
+            initials: userName(for: userID),
+            size: 22,
+            showRing: true
+        )
+    }
+
+    // MARK: - Deterministic free-form helpers
+
+    private func stableHash(_ id: String) -> Int {
+        // String.hashValue is per-process random; use a stable djb2 hash so
+        // each memory keeps the same size/position across cold starts.
+        var hash = 5381
+        for byte in id.utf8 {
+            hash = ((hash &<< 5) &+ hash) &+ Int(byte)
+        }
+        return abs(hash)
+    }
+
+    private func stableFraction(for id: String, salt: Int) -> CGFloat {
+        let saltedHash = stableHash("\(id)-\(salt)")
+        return CGFloat(saltedHash % 10_000) / 10_000
+    }
+
+    private func photoSize(for id: String) -> CGFloat {
+        let sizes: [CGFloat] = [112, 126, 140, 154]
+        return sizes[stableHash(id) % sizes.count]
+    }
+
+    private func bubbleFrameWidth(for id: String) -> CGFloat {
+        photoSize(for: id) + 44
+    }
+
+    private func avatarOnTrailing(for id: String) -> Bool {
+        stableHash(id) % 2 == 0
+    }
+
+    private func bubbleHorizontalNudge(for id: String) -> CGFloat {
+        let mod = stableHash(id) % 25   // 0...24
+        return CGFloat(mod) - 12        // -12...12
+    }
+
+    private func bubbleVerticalNudge(for id: String) -> CGFloat {
+        CGFloat((stableHash(id) / 7) % 18)
+    }
+
+    private func floatSeed(for id: String) -> Double {
+        Double(stableHash(id) % 1000) / 1000.0 * .pi * 2
     }
 
     // MARK: - Empty state
@@ -414,26 +795,64 @@ struct AlbumDetailView: View {
                 .font(.clash(44, weight: .light))
                 .foregroundColor(AppColor.inkFaint)
                 .padding(.top, 40)
-            Text("No memories found")
+            Text(memories.isEmpty ? "Add your first meal memory" : "No memories found")
                 .font(AppFont.headline)
                 .foregroundColor(AppColor.inkMuted)
-            Text("Try a different search or add your first memory.")
+            Text(memories.isEmpty ? "Save a photo and title now. Details can come later." : "Try a different search or add another memory.")
                 .font(AppFont.caption)
                 .foregroundColor(AppColor.inkFaint)
+            if memories.isEmpty {
+                NavigationLink {
+                    AddMemoryView(
+                        album: album,
+                        existingMemories: locationHintMemories
+                    ) { newMemory in
+                        Task {
+                            await memoriesViewModel.add(newMemory)
+                        }
+                    }
+                } label: {
+                    Text("Start a Meal Memory")
+                        .font(AppFont.captionBold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(AppGradient.hero))
+                }
+                .buttonStyle(.plain)
+                .pressableScale()
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.bottom, 40)
     }
 }
 
+// Continuous, organic drift for the memory bubbles. The seed changes phase,
+// speed and amplitude, so nearby bubbles do not move in lockstep.
+private struct FloatingMotion: ViewModifier {
+    let seed: Double
+
+    func body(content: Content) -> some View {
+        TimelineView(.animation) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let xSpeed = 0.42 + (seed.truncatingRemainder(dividingBy: 0.28))
+            let ySpeed = 0.34 + (seed.truncatingRemainder(dividingBy: 0.22))
+            let xAmplitude = 3.5 + CGFloat(seed.truncatingRemainder(dividingBy: 2.6))
+            let yAmplitude = 5.0 + CGFloat(seed.truncatingRemainder(dividingBy: 3.4))
+            let dx = CGFloat(sin(t * xSpeed + seed)) * xAmplitude
+            let dy = CGFloat(cos(t * ySpeed + seed * 1.3)) * yAmplitude
+            content.offset(x: dx, y: dy)
+        }
+    }
+}
+
 #Preview {
     NavigationStack {
-        AlbumDetailView(album: Album(
-            title: "PARK",
-            ownerId: "jisu",
-            tags: ["Tree", "nature", "Picnic"],
-            location: "Centennial Park, Sydney",
-            date: Date()
-        ))
+        AlbumDetailView(
+            album: MockData.albumPark,
+            initialMemories: MockData.memories(forAlbumId: MockData.albumPark.id)
+        )
     }
+    .environmentObject(LoginViewModel())
 }
