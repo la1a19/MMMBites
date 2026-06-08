@@ -19,6 +19,7 @@ struct AlbumsView: View {
     @State private var selectedTags: Set<String> = []
     @State private var showAddAlbum = false
     @State private var currentPage = 0
+    @State private var carouselDragOffset: CGFloat = 0
     @State private var showGridView = false
     @State private var showProfile = false
     @State private var showSettings = false
@@ -114,7 +115,14 @@ struct AlbumsView: View {
                 }
                 .padding(.horizontal, AppSpacing.xl)
                 .padding(.top, AppSpacing.s)
+
+                if showFilters {
+                    filterDropdownOverlay
+                        .transition(.opacity)
+                        .zIndex(20)
+                }
             }
+            .animation(AppAnimation.snappy, value: showFilters)
             .fullScreenCover(isPresented: $showMemoryBoard) {
                 NavigationStack {
                     UnlimitedMemoryBoardView(
@@ -123,6 +131,12 @@ struct AlbumsView: View {
                         showUnlimitedBoard: $showMemoryBoard
                     )
                 }
+            }
+            .onChange(of: searchText) { _, _ in
+                currentPage = safeCurrentPage(for: filteredAlbums)
+            }
+            .onChange(of: selectedTags) { _, _ in
+                currentPage = safeCurrentPage(for: filteredAlbums)
             }
             .sheet(isPresented: $showAddAlbum) {
                 NavigationStack {
@@ -251,45 +265,122 @@ struct AlbumsView: View {
     }
 
     // MARK: - Filter pills
-
-    private var filterPills: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-            ForEach(filterOptions, id: \.self) { tag in
-                Button {
-                    Haptics.selection()
-                    withAnimation(AppAnimation.snappy) { toggleTag(tag) }
-                } label: {
-                    HStack {
-                        Text(tag)
-                            .fontWeight(.semibold)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                        if selectedTags.contains(tag) {
-                            Spacer()
-                            Image(systemName: "xmark")
-                                .font(.clash(13, weight: .bold))
-                        }
+    private var filterDropdownOverlay: some View {
+        ZStack(alignment: .top) {
+            Color.black.opacity(0.001)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(AppAnimation.snappy) {
+                        showFilters = false
                     }
-                    .font(AppFont.subheadline)
-                    .foregroundColor(selectedTags.contains(tag) ? .white : AppColor.ink)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(
-                        Capsule().fill(
-                            selectedTags.contains(tag)
-                            ? AppColor.tag(tag)
-                            : Color.white.opacity(0.7)
-                        )
-                    )
-                    .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
-                    .shadow(color: .black.opacity(0.06), radius: 6, y: 3)
                 }
-                .buttonStyle(.plain)
-                .pressableScale(0.94)
-            }
+
+            filterDropdownMenu
+                .padding(.horizontal, AppSpacing.xl)
+                .padding(.top, 210)
         }
     }
+    private var filterDropdownMenu: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Filter by tags")
+                    .font(.clash(15, weight: .semibold))
+                    .foregroundColor(AppColor.ink)
 
+                Spacer()
+
+                Button {
+                    Haptics.tap()
+                    withAnimation(AppAnimation.snappy) {
+                        showFilters = false
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(AppColor.inkMuted)
+                }
+                .buttonStyle(.plain)
+            }
+
+            ScrollView {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible()),
+                        GridItem(.flexible())
+                    ],
+                    spacing: 10
+                ) {
+                    ForEach(filterOptions, id: \.self) { tag in
+                        Button {
+                            Haptics.selection()
+                            withAnimation(AppAnimation.snappy) {
+                                toggleTag(tag)
+                            }
+                        } label: {
+                            HStack {
+                                Text(tag)
+                                    .fontWeight(.semibold)
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+
+                                if selectedTags.contains(tag) {
+                                    Spacer()
+
+                                    Image(systemName: "checkmark")
+                                        .font(.clash(13, weight: .bold))
+                                }
+                            }
+                            .font(AppFont.subheadline)
+                            .foregroundColor(selectedTags.contains(tag) ? .white : AppColor.ink)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                Capsule().fill(
+                                    selectedTags.contains(tag)
+                                    ? AppColor.tag(tag)
+                                    : Color.white.opacity(0.72)
+                                )
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.white.opacity(0.65), lineWidth: 1)
+                            )
+                            .shadow(color: .black.opacity(0.05), radius: 5, y: 2)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .frame(maxHeight: 190)
+
+            if !selectedTags.isEmpty {
+                Button {
+                    Haptics.tap()
+                    withAnimation(AppAnimation.snappy) {
+                        selectedTags.removeAll()
+                    }
+                } label: {
+                    Text("Clear selected filters")
+                        .font(AppFont.captionBold)
+                        .foregroundColor(AppColor.inkMuted)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.5), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.white.opacity(0.7), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.18), radius: 18, x: 0, y: 10)
+    }
+ 
     // MARK: - Title
 
     private var titleRow: some View {
@@ -401,30 +492,12 @@ struct AlbumsView: View {
 
     private var carouselView: some View {
         VStack(spacing: AppSpacing.l) {
-            // Frame 1 — swipeable photo bubbles
-            TabView(selection: $currentPage) {
-                ForEach(Array(filteredAlbums.enumerated()), id: \.element.id) { index, album in
-                    NavigationLink {
-                        AlbumDetailView(
-                            album: album,
-                            initialMemories: memories(for: album)
-                        ) { updatedMemories in
-                            albumMemories[album.id] = updatedMemories
-                        } onAlbumUpdate: { updatedAlbum in
-                            updateAlbum(updatedAlbum)
-                        }
-                    } label: {
-                        photoBubble(album, isActive: index == currentPage)
-                    }
-                    .buttonStyle(.plain)
-                    .tag(index)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            .frame(height: 340)
-            .animation(AppAnimation.smooth, value: currentPage)
+            customAlbumCarousel
+                .frame(height: 360)
 
-            // Frame 2 — separate info card that animates when currentPage changes
+            albumCarouselScrollbar
+                .padding(.horizontal, 70)
+
             if let currentAlbum = currentAlbum {
                 albumInfoCard(currentAlbum)
                     .id(currentAlbum.id)
@@ -438,11 +511,178 @@ struct AlbumsView: View {
         }
         .animation(AppAnimation.smooth, value: currentPage)
     }
+    
+    private var customAlbumCarousel: some View {
+        GeometryReader { proxy in
+            let albums = filteredAlbums
+            let currentIndex = safeCurrentPage(for: albums)
+            let previousIndex = wrappedIndex(currentIndex - 1, count: albums.count)
+            let nextIndex = wrappedIndex(currentIndex + 1, count: albums.count)
+
+            let sideOffset = proxy.size.width * 0.62
+            let dragProgress = carouselDragOffset / proxy.size.width
+
+            ZStack {
+                if albums.count > 1 {
+                    albumCarouselBubble(
+                        albums[previousIndex],
+                        isActive: false,
+                        size: 190
+                    )
+                    .offset(
+                        x: -sideOffset + carouselDragOffset,
+                        y: 12
+                    )
+                    .opacity(0.34 + max(0, dragProgress) * 0.35)
+                    .scaleEffect(0.78 + max(0, dragProgress) * 0.16)
+                    .zIndex(carouselDragOffset > 0 ? 2 : 1)
+
+                    albumCarouselBubble(
+                        albums[nextIndex],
+                        isActive: false,
+                        size: 190
+                    )
+                    .offset(
+                        x: sideOffset + carouselDragOffset,
+                        y: 12
+                    )
+                    .opacity(0.34 + max(0, -dragProgress) * 0.35)
+                    .scaleEffect(0.78 + max(0, -dragProgress) * 0.16)
+                    .zIndex(carouselDragOffset < 0 ? 2 : 1)
+                }
+
+                NavigationLink {
+                    AlbumDetailView(
+                        album: albums[currentIndex],
+                        initialMemories: memories(for: albums[currentIndex])
+                    ) { updatedMemories in
+                        albumMemories[albums[currentIndex].id] = updatedMemories
+                    } onAlbumUpdate: { updatedAlbum in
+                        updateAlbum(updatedAlbum)
+                    }
+                } label: {
+                    albumCarouselBubble(
+                        albums[currentIndex],
+                        isActive: true,
+                        size: 280
+                    )
+                }
+                .buttonStyle(.plain)
+                .offset(x: carouselDragOffset)
+                .scaleEffect(1.0 - min(abs(dragProgress) * 0.12, 0.12))
+                .zIndex(3)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 12)
+                    .onChanged { value in
+                        carouselDragOffset = value.translation.width
+                    }
+                    .onEnded { value in
+                        let threshold: CGFloat = 65
+
+                        if value.translation.width < -threshold {
+                            moveCarouselForward()
+                        } else if value.translation.width > threshold {
+                            moveCarouselBackward()
+                        }
+
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                            carouselDragOffset = 0
+                        }
+                    }
+            )
+            .animation(.interactiveSpring(response: 0.28, dampingFraction: 0.82), value: carouselDragOffset)
+        }
+    }
+    
+    private func albumCarouselBubble(
+        _ album: Album,
+        isActive: Bool,
+        size: CGFloat
+    ) -> some View {
+        ZStack {
+            Circle()
+                .fill(AppGradient.hero)
+                .frame(width: size + 54, height: size + 54)
+                .blur(radius: isActive ? 18 : 10)
+                .opacity(isActive ? 0.19 : 0.09)
+
+            MemoryPhotoThumbnail(
+                photoData: coverPhotoData(for: album),
+                imageURLs: coverImageURLs(for: album),
+                width: size,
+                height: size,
+                placeholderSystemImage: "photo.on.rectangle.angled"
+            )
+            .overlay(
+                Circle()
+                    .stroke(Color.white.opacity(isActive ? 0.9 : 0.55), lineWidth: isActive ? 3 : 2)
+            )
+            .shadow(
+                color: .black.opacity(isActive ? 0.18 : 0.08),
+                radius: isActive ? 20 : 10,
+                y: isActive ? 12 : 6
+            )
+
+            if isActive {
+                VStack {
+                    Spacer()
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.up.right.circle.fill")
+                            .font(.clash(13, weight: .bold))
+
+                        Text("OPEN ALBUM")
+                            .font(.clash(11, weight: .semibold))
+                            .tracking(1.2)
+                    }
+                    .foregroundColor(AppColor.ink)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(AppGradient.glass, in: Capsule(style: .continuous))
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.6), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.08), radius: 8, y: 4)
+                    .padding(.bottom, 14)
+                }
+                .frame(width: size, height: size)
+            }
+        }
+        .frame(width: size + 110, height: size + 110)
+    }
+    
+    private var albumCarouselScrollbar: some View {
+        GeometryReader { proxy in
+            let count = max(filteredAlbums.count, 1)
+            let progress = CGFloat(safeCurrentPage(for: filteredAlbums)) / CGFloat(max(count - 1, 1))
+
+            let trackWidth = proxy.size.width
+            let minThumbWidth: CGFloat = 36
+            let thumbWidth = max(trackWidth / CGFloat(count), minThumbWidth)
+            let travelWidth = max(trackWidth - thumbWidth, 0)
+
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.white.opacity(0.45))
+                    .frame(height: 6)
+
+                Capsule()
+                    .fill(AppGradient.hero)
+                    .frame(width: thumbWidth, height: 6)
+                    .offset(x: travelWidth * progress)
+                    .shadow(color: AppColor.primary.opacity(0.25), radius: 5, y: 2)
+            }
+        }
+        .frame(height: 8)
+    }
 
     private var currentAlbum: Album? {
         guard !filteredAlbums.isEmpty else { return nil }
-        let safeIndex = min(max(currentPage, 0), filteredAlbums.count - 1)
-        return filteredAlbums[safeIndex]
+        return filteredAlbums[safeCurrentPage(for: filteredAlbums)]
     }
 
     private var gridView: some View {
@@ -631,6 +871,45 @@ struct AlbumsView: View {
 
     // MARK: - Helpers
 
+    private func safeCurrentPage(for albums: [Album]) -> Int {
+        guard !albums.isEmpty else { return 0 }
+        return min(max(currentPage, 0), albums.count - 1)
+    }
+
+    private func wrappedIndex(_ index: Int, count: Int) -> Int {
+        guard count > 0 else { return 0 }
+
+        if index < 0 {
+            return count - 1
+        }
+
+        if index >= count {
+            return 0
+        }
+
+        return index
+    }
+
+    private func moveCarouselForward() {
+        guard !filteredAlbums.isEmpty else { return }
+
+        Haptics.selection()
+
+        withAnimation(AppAnimation.smooth) {
+            currentPage = wrappedIndex(currentPage + 1, count: filteredAlbums.count)
+        }
+    }
+
+    private func moveCarouselBackward() {
+        guard !filteredAlbums.isEmpty else { return }
+
+        Haptics.selection()
+
+        withAnimation(AppAnimation.smooth) {
+            currentPage = wrappedIndex(currentPage - 1, count: filteredAlbums.count)
+        }
+    }
+    
     private func toggleTag(_ tag: String) {
         if selectedTags.contains(tag) {
             selectedTags.remove(tag)
