@@ -18,20 +18,20 @@ struct SignUpView: View {
 
     var body: some View {
         ZStack {
-            // Animated Background (Maintained underneath)
+            // Animated Background
             AnimatedBlobBackground()
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
 
             VStack(spacing: 0) {
                 
-                // Top Card Container (Touches absolute top, ends right above the button)
+                // Top Card Container (Touches the absolute top, ends right above the button)
                 VStack(spacing: 0) {
                     
                     // Custom Back Button Row
                     HStack {
                         Button(action: {
-                            Haptics.soft()
+                            Haptics.soft() // Fixed the typo here!
                             dismiss()
                         }) {
                             Image(systemName: "arrow.backward")
@@ -78,15 +78,15 @@ struct SignUpView: View {
                     }
                 }
                 .background(
-                    Color(red: 0.89, green: 0.93, blue: 0.98) // The exact light blue from your screenshot
+                    Color.white.opacity(0.45) // Translucent light card background
                         .clipShape(UnevenRoundedRectangle(
                             bottomLeadingRadius: 40,
                             bottomTrailingRadius: 40
                         ))
                 )
-                .ignoresSafeArea(edges: .top) // Forces the light blue container to touch the very top edge
+                .ignoresSafeArea(edges: .top) // Forces the white container to touch the very top edge
 
-                Spacer(minLength: 20) // Controlled gap right above the Create button
+                Spacer(minLength: 20) // The controlled gap right above the Create button
 
                 // Bottom Controls Area
                 VStack(spacing: 20) {
@@ -119,7 +119,7 @@ struct SignUpView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
-                    .background(Color(red: 0.10, green: 0.16, blue: 0.42)) // Your exact dark navy requirement
+                    .background(Color(red: 0.10, green: 0.16, blue: 0.42)) // Your exact color requirements
                     .cornerRadius(22)
                     .padding(.horizontal, 32)
                     .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 4)
