@@ -73,7 +73,7 @@ enum MockData {
                 Reaction(userId: "tin",  emoji: "🫶"),
                 Reaction(userId: "jisu", emoji: "✨")
             ],
-            mood: .chill,
+            mood: .relaxing,
             bestBite: "Fairy bread",
             memorableTags: ["Friends", "Atmosphere", "Food"],
             participantIds: ["Jisu", "Ada", "Tin"],
@@ -94,7 +94,7 @@ enum MockData {
                 Reaction(userId: "ada",  emoji: "✨"),
                 Reaction(userId: "jisu", emoji: "🍓")
             ],
-            mood: .chill,
+            mood: .relaxing,
             bestBite: "Strawberries",
             memorableTags: ["Atmosphere", "Conversation"],
             participantIds: ["Jisu", "Ada"],
@@ -158,7 +158,7 @@ enum MockData {
                 Reaction(userId: "mia",  emoji: "✨"),
                 Reaction(userId: "jisu", emoji: "🫶")
             ],
-            mood: .special,
+            mood: .celebratory,
             bestBite: "Strawberry cake",
             memorableTags: ["Friends", "Surprise", "Food"],
             participantIds: ["Jisu", "Ada", "Mia"],

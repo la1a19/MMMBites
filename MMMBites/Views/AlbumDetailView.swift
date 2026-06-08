@@ -23,8 +23,13 @@ struct AlbumDetailView: View {
     @State private var showEditAlbum = false
     @State private var friendUsers: [User] = []
     @State private var isBubbleCanvasExpanded = false
-    @State private var bubbleCanvasOffset: CGSize = .zero
-    @GestureState private var bubbleDragTranslation: CGSize = .zero
+    @State private var bubbleOffsets: [String: CGSize] = [:]
+    @GestureState private var activeBubbleDrag: BubbleDragState? = nil
+
+    private struct BubbleDragState: Equatable {
+        let id: String
+        let translation: CGSize
+    }
 
     init(
         album: Album,
@@ -374,7 +379,7 @@ struct AlbumDetailView: View {
             Button {
                 withAnimation(AppAnimation.snappy) {
                     isBubbleCanvasExpanded = false
-                    bubbleCanvasOffset = .zero
+                    bubbleOffsets = [:]
                 }
                 Haptics.selection()
             } label: {
@@ -530,48 +535,51 @@ struct AlbumDetailView: View {
     private var freeformMemoryCanvas: some View {
         GeometryReader { proxy in
             let viewportSize = proxy.size
-            let contentSize = bubbleCanvasContentSize(
-                viewportSize: viewportSize,
-                memoryCount: filteredMemories.count
-            )
-            let liveOffset = clampedCanvasOffset(
-                proposed: CGSize(
-                    width: bubbleCanvasOffset.width + bubbleDragTranslation.width,
-                    height: bubbleCanvasOffset.height + bubbleDragTranslation.height
-                ),
-                viewportSize: viewportSize,
-                contentSize: contentSize
-            )
+            let contentSize = viewportSize
 
             ZStack(alignment: .topLeading) {
                 Color.clear
                     .contentShape(Rectangle())
 
-                ZStack(alignment: .topLeading) {
-                    ForEach(Array(filteredMemories.enumerated()), id: \.element.id) { index, memory in
-                        memoryBubble(memory)
-                            .position(bubblePosition(
-                                for: memory,
-                                index: index,
-                                contentSize: contentSize
-                            ))
-                            .zIndex(Double(stableHash(memory.id) % 100))
-                            .bounceOnAppear(delay: 0.12 + Double(index) * 0.035)
-                    }
+                ForEach(Array(filteredMemories.enumerated()), id: \.element.id) { index, memory in
+                    memoryBubble(memory)
+                        .position(bubblePosition(
+                            for: memory,
+                            index: index,
+                            contentSize: contentSize
+                        ))
+                        .offset(bubbleOffset(for: memory.id))
+                        .zIndex(zIndex(for: memory.id))
+                        .bounceOnAppear(delay: 0.12 + Double(index) * 0.035)
                 }
-                .frame(width: contentSize.width, height: contentSize.height, alignment: .topLeading)
-                .offset(liveOffset)
             }
             .clipped()
-            .simultaneousGesture(bubbleCanvasDragGesture(
-                viewportSize: viewportSize,
-                contentSize: contentSize
-            ))
         }
         .frame(height: bubbleCanvasViewportHeight(for: filteredMemories.count, expanded: isBubbleCanvasExpanded))
-        .onChange(of: filteredMemories.map(\.id)) { _, _ in
-            bubbleCanvasOffset = .zero
+        .onChange(of: filteredMemories.map(\.id)) { _, ids in
+            // Drop offsets for memories no longer in the album.
+            let validIDs = Set(ids)
+            bubbleOffsets = bubbleOffsets.filter { validIDs.contains($0.key) }
         }
+    }
+
+    private func bubbleOffset(for id: String) -> CGSize {
+        let base = bubbleOffsets[id] ?? .zero
+        if let active = activeBubbleDrag, active.id == id {
+            return CGSize(
+                width: base.width + active.translation.width,
+                height: base.height + active.translation.height
+            )
+        }
+        return base
+    }
+
+    private func zIndex(for id: String) -> Double {
+        // Active drag floats to the top so it doesn't slip under other bubbles.
+        if activeBubbleDrag?.id == id {
+            return 1000
+        }
+        return Double(stableHash(id) % 100)
     }
 
     private func bubbleCanvasViewportHeight(for memoryCount: Int, expanded: Bool) -> CGFloat {
@@ -579,56 +587,6 @@ struct AlbumDetailView: View {
             return 760
         }
         return min(660, max(500, CGFloat(memoryCount) * 78 + 260))
-    }
-
-    private func bubbleCanvasContentSize(viewportSize: CGSize, memoryCount: Int) -> CGSize {
-        CGSize(
-            width: max(viewportSize.width * 1.75, viewportSize.width + 280),
-            height: max(viewportSize.height * 1.75, CGFloat(memoryCount) * 150 + 260)
-        )
-    }
-
-    private func bubbleCanvasDragGesture(viewportSize: CGSize, contentSize: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 4)
-            .updating($bubbleDragTranslation) { value, state, _ in
-                state = value.translation
-            }
-            .onEnded { value in
-                if value.translation.height < -90 {
-                    withAnimation(AppAnimation.snappy) {
-                        isBubbleCanvasExpanded = true
-                    }
-                    Haptics.selection()
-                } else if value.translation.height > 90 {
-                    withAnimation(AppAnimation.snappy) {
-                        isBubbleCanvasExpanded = false
-                    }
-                    Haptics.selection()
-                }
-
-                let proposed = CGSize(
-                    width: bubbleCanvasOffset.width + value.translation.width,
-                    height: bubbleCanvasOffset.height + value.translation.height
-                )
-                bubbleCanvasOffset = clampedCanvasOffset(
-                    proposed: proposed,
-                    viewportSize: viewportSize,
-                    contentSize: contentSize
-                )
-            }
-    }
-
-    private func clampedCanvasOffset(
-        proposed: CGSize,
-        viewportSize: CGSize,
-        contentSize: CGSize
-    ) -> CGSize {
-        let minX = min(0, viewportSize.width - contentSize.width)
-        let minY = min(0, viewportSize.height - contentSize.height)
-        return CGSize(
-            width: min(max(proposed.width, minX), 0),
-            height: min(max(proposed.height, minY), 0)
-        )
     }
 
     private func bubblePosition(for memory: Memory, index: Int, contentSize: CGSize) -> CGPoint {
@@ -679,6 +637,20 @@ struct AlbumDetailView: View {
         }
         .buttonStyle(.plain)
         .pressableScale()
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 8)
+                .updating($activeBubbleDrag) { value, state, _ in
+                    state = BubbleDragState(id: memory.id, translation: value.translation)
+                }
+                .onEnded { value in
+                    let base = bubbleOffsets[memory.id] ?? .zero
+                    bubbleOffsets[memory.id] = CGSize(
+                        width: base.width + value.translation.width,
+                        height: base.height + value.translation.height
+                    )
+                    Haptics.soft()
+                }
+        )
     }
 
     private func memoryPhotoCircle(_ memory: Memory, size: CGFloat) -> some View {

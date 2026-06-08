@@ -21,6 +21,8 @@ struct AlbumsView: View {
     @State private var showSettings = false
     @State private var showFriends = false
     @State private var showMemorySearch = false
+    @State private var showBestBites = false
+    @State private var showMemoryMap = false
     @State private var profilePhotoData: Data?
 
     // Album-level categories shown when the filter panel is open.
@@ -65,36 +67,50 @@ struct AlbumsView: View {
             ZStack {
                 AppBackground()
 
-                VStack(spacing: AppSpacing.l) {
-                    header
-                        .bounceOnAppear()
+                ScrollView {
+                    VStack(spacing: AppSpacing.l) {
+                        header
+                            .bounceOnAppear()
 
-                    titleRow
-                        .bounceOnAppear(delay: 0.05)
+                        titleRow
+                            .bounceOnAppear(delay: 0.05)
 
-                    searchRow
-                        .bounceOnAppear(delay: 0.1)
+                        searchRow
+                            .bounceOnAppear(delay: 0.1)
 
-                    if showFilters {
-                        filterPills
-                            .transition(.move(edge: .top).combined(with: .opacity))
+                        if showFilters {
+                            filterPills
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+
+                        if let throwback = throwbackMemory {
+                            throwbackCard(throwback)
+                                .bounceOnAppear(delay: 0.12)
+                        }
+
+                        if bestBitesCount > 0 || mappedMemoriesCount > 0 {
+                            HStack(spacing: AppSpacing.s) {
+                                if bestBitesCount > 0 {
+                                    bestBitesEntryCard
+                                }
+                                if mappedMemoriesCount > 0 {
+                                    mapEntryCard
+                                }
+                            }
+                            .bounceOnAppear(delay: 0.13)
+                        }
+
+                        sectionHeader
+                            .bounceOnAppear(delay: 0.15)
+
+                        bubblesCarousel
+                            .bounceOnAppear(delay: 0.2)
                     }
-
-                    if let throwback = throwbackMemory {
-                        throwbackCard(throwback)
-                            .bounceOnAppear(delay: 0.12)
-                    }
-
-                    sectionHeader
-                        .bounceOnAppear(delay: 0.15)
-
-                    bubblesCarousel
-                        .bounceOnAppear(delay: 0.2)
-
-                    Spacer(minLength: 0)
+                    .padding(.horizontal, AppSpacing.xl)
+                    .padding(.top, AppSpacing.s)
+                    .padding(.bottom, AppSpacing.xl)
                 }
-                .padding(.horizontal, AppSpacing.xl)
-                .padding(.top, AppSpacing.s)
+                .scrollDismissesKeyboard(.interactively)
             }
             .sheet(isPresented: $showAddAlbum) {
                 NavigationStack {
@@ -140,6 +156,24 @@ struct AlbumsView: View {
             }
             .sheet(isPresented: $showMemorySearch) {
                 MemorySearchView(
+                    memories: viewModel.memories,
+                    albums: viewModel.albums
+                )
+                .environmentObject(authViewModel)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showBestBites) {
+                BestBitesView(
+                    memories: viewModel.memories,
+                    albums: viewModel.albums
+                )
+                .environmentObject(authViewModel)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showMemoryMap) {
+                MemoryMapView(
                     memories: viewModel.memories,
                     albums: viewModel.albums
                 )
@@ -548,11 +582,26 @@ struct AlbumsView: View {
     // Frame 1 — just the photo circle (swipeable)
     private func photoBubble(_ album: Album, isActive: Bool) -> some View {
         ZStack {
+            // Radial-gradient halo. Fades to fully transparent at the edge of
+            // its own frame, so even if the TabView page clips the visible
+            // area, the clipped portion is already invisible — no sharp
+            // rectangular boundary.
             Circle()
-                .fill(AppGradient.hero)
-                .frame(width: 300, height: 300)
-                .blur(radius: 30)
-                .opacity(isActive ? 0.45 : 0.15)
+                .fill(
+                    RadialGradient(
+                        gradient: Gradient(stops: [
+                            .init(color: AppColor.primary.opacity(isActive ? 0.55 : 0.18), location: 0.0),
+                            .init(color: AppColor.secondary.opacity(isActive ? 0.30 : 0.10), location: 0.45),
+                            .init(color: .clear, location: 1.0)
+                        ]),
+                        center: .center,
+                        startRadius: 90,
+                        endRadius: 170
+                    )
+                )
+                .frame(width: 340, height: 340)
+                .blendMode(.plusLighter)
+                .allowsHitTesting(false)
 
             MemoryPhotoThumbnail(
                 photoData: coverPhotoData(for: album),
@@ -572,6 +621,7 @@ struct AlbumsView: View {
             }
             .frame(width: 280, height: 280)
         }
+        .frame(width: 340, height: 340)
         .overlay(
             Circle()
                 .stroke(Color.white.opacity(0.85), lineWidth: 3)
@@ -701,6 +751,94 @@ struct AlbumsView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 420)
+    }
+
+    // MARK: - Discover entry cards
+
+    private var bestBitesCount: Int {
+        viewModel.memories.reduce(0) { count, memory in
+            let trimmed = (memory.bestBite ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return count + (trimmed.isEmpty ? 0 : 1)
+        }
+    }
+
+    private var mappedMemoriesCount: Int {
+        viewModel.memories.reduce(0) { count, memory in
+            count + ((memory.latitude != nil && memory.longitude != nil) ? 1 : 0)
+        }
+    }
+
+    private var bestBitesEntryCard: some View {
+        discoverCard(
+            icon: "fork.knife",
+            label: "BEST BITES",
+            value: "\(bestBitesCount)",
+            subtitle: bestBitesCount == 1 ? "bite" : "bites"
+        ) {
+            showBestBites = true
+        }
+    }
+
+    private var mapEntryCard: some View {
+        discoverCard(
+            icon: "map.fill",
+            label: "MAP",
+            value: "\(mappedMemoriesCount)",
+            subtitle: "on map"
+        ) {
+            showMemoryMap = true
+        }
+    }
+
+    private func discoverCard(
+        icon: String,
+        label: String,
+        value: String,
+        subtitle: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            Haptics.tap()
+            action()
+        } label: {
+            HStack(spacing: AppSpacing.s) {
+                ZStack {
+                    Circle()
+                        .fill(AppColor.accent.opacity(0.18))
+                        .frame(width: 34, height: 34)
+                    Image(systemName: icon)
+                        .font(.clash(13, weight: .bold))
+                        .foregroundStyle(AppGradient.hero)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(label)
+                        .font(.clash(9, weight: .semibold))
+                        .tracking(1.1)
+                        .foregroundStyle(AppGradient.hero)
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(value)
+                            .font(.clash(16, weight: .bold))
+                            .foregroundColor(AppColor.ink)
+                        Text(subtitle)
+                            .font(.clash(11, weight: .medium))
+                            .foregroundColor(AppColor.inkMuted)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, AppSpacing.s + 2)
+            .padding(.vertical, AppSpacing.s + 2)
+            .frame(maxWidth: .infinity)
+            .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous)
+                    .stroke(Color.white.opacity(0.6), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
+        }
+        .buttonStyle(.plain)
+        .pressableScale(0.98)
     }
 
     // MARK: - Throwback

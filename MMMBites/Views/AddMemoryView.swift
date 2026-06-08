@@ -448,16 +448,16 @@ struct AddMemoryView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "calendar")
+                        .font(.clash(12, weight: .semibold))
                         .foregroundColor(AppColor.secondary)
                     Text(date, style: .date)
-                        .font(.clash(13, weight: .semibold))
+                        .font(.clash(12, weight: .semibold))
                         .foregroundColor(AppColor.ink)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 11)
+                .frame(minHeight: 22)
                 .pillSurface()
             }
             .buttonStyle(.plain)
@@ -482,9 +482,12 @@ struct AddMemoryView: View {
 
             HStack(spacing: 6) {
                 Image(systemName: "mappin.and.ellipse")
+                    .font(.clash(12, weight: .semibold))
                     .foregroundColor(AppColor.primary)
                 TextField("e.g. Bills, Bondi", text: $location)
-                    .font(.clash(13, weight: .semibold))
+                    .font(.clash(12, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                     .focused($isLocationFocused)
                     .autocorrectionDisabled(true)
                     .textInputAutocapitalization(.words)
@@ -495,9 +498,9 @@ struct AddMemoryView: View {
                         selectedLongitude = nil
                         locationSearch.update(query: newValue)
                     }
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 11)
+            .frame(minHeight: 22)
             .pillSurface()
 
             if isLocationFocused && shouldShowLocationSuggestions {
@@ -733,19 +736,19 @@ struct AddMemoryView: View {
             Haptics.selection()
             mood = m
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Text(m.emoji)
-                    .font(.system(size: selected ? 14 : 13))
-                    .frame(width: 17)
+                    .font(.system(size: selected ? 13 : 12))
+                    .frame(width: 15)
 
                 Text(m.label)
-                    .font(.clash(10, weight: selected ? .bold : .semibold))
+                    .font(.clash(11, weight: selected ? .bold : .semibold))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.55)
+                    .fixedSize(horizontal: true, vertical: false)
             }
             .foregroundColor(selected ? .white : AppColor.ink)
-            .padding(.horizontal, 8)
-            .frame(width: 76, height: 36)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .background(
                 Capsule(style: .continuous)
                     .fill(selected ? AppGradient.hero : AppGradient.glass)

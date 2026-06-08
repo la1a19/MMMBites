@@ -11,14 +11,14 @@ import Foundation
 
 /// How the meal/experience felt.
 enum MemoryMood: String, Codable, CaseIterable, Identifiable {
-    case chill, fun, cozy, special, chaotic, comfort, fancy, adventurous
+    case fun, cozy, fancy, relaxing, heartwarming, celebratory, casual, nostalgic, chaotic, disappointing
 
     var id: String { rawValue }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let rawValue = try container.decode(String.self)
-        self = Self(rawValue: rawValue) ?? Self.legacyMoodMap[rawValue] ?? .special
+        self = Self(rawValue: rawValue) ?? Self.legacyMoodMap[rawValue] ?? .fun
     }
 
     func encode(to encoder: Encoder) throws {
@@ -27,47 +27,54 @@ enum MemoryMood: String, Codable, CaseIterable, Identifiable {
     }
 
     private static let legacyMoodMap: [String: MemoryMood] = [
-        "mellow": .chill,
-        "peaceful": .chill,
-        "warm": .cozy,
-        "intimate": .cozy,
+        "chill": .relaxing,
+        "mellow": .relaxing,
+        "peaceful": .relaxing,
+        "warm": .heartwarming,
+        "intimate": .heartwarming,
+        "special": .celebratory,
+        "comfort": .heartwarming,
+        "adventurous": .fun,
         "playful": .fun,
         "silly": .fun,
         "buzzing": .fun,
-        "spontaneous": .adventurous,
-        "curious": .adventurous,
-        "romantic": .special,
-        "nostalgic": .special,
-        "sentimental": .special,
-        "grateful": .special,
-        "dreamy": .special,
-        "proud": .special,
-        "refreshing": .comfort
+        "spontaneous": .fun,
+        "curious": .fun,
+        "romantic": .heartwarming,
+        "sentimental": .nostalgic,
+        "grateful": .heartwarming,
+        "dreamy": .nostalgic,
+        "proud": .celebratory,
+        "refreshing": .relaxing
     ]
 
     var label: String {
         switch self {
-        case .chill:        return "Chill"
-        case .fun:          return "Fun"
-        case .cozy:         return "Cozy"
-        case .special:      return "Special"
-        case .chaotic:      return "Chaotic"
-        case .comfort:      return "Comfort"
-        case .adventurous:  return "Adventurous"
-        case .fancy:        return "Fancy"
+        case .fun:           return "Fun"
+        case .cozy:          return "Cozy"
+        case .fancy:         return "Fancy"
+        case .relaxing:      return "Relaxing"
+        case .heartwarming:  return "Heartwarming"
+        case .celebratory:   return "Celebratory"
+        case .casual:        return "Casual"
+        case .nostalgic:     return "Nostalgic"
+        case .chaotic:       return "Chaotic"
+        case .disappointing: return "Disappointing"
         }
     }
 
     var emoji: String {
         switch self {
-        case .chill:        return "😌"
-        case .fun:          return "🎉"
-        case .cozy:         return "🫖"
-        case .special:      return "✨"
-        case .chaotic:      return "🌪️"
-        case .comfort:      return "🍲"
-        case .adventurous:  return "🧭"
-        case .fancy:        return "🥂"
+        case .fun:           return "🎉"
+        case .cozy:          return "🫖"
+        case .fancy:         return "🥂"
+        case .relaxing:      return "😌"
+        case .heartwarming:  return "💛"
+        case .celebratory:   return "✨"
+        case .casual:        return "🍽️"
+        case .nostalgic:     return "📸"
+        case .chaotic:       return "🌪️"
+        case .disappointing: return "😕"
         }
     }
 }

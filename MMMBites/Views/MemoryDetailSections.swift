@@ -208,26 +208,27 @@ struct MemoryMoodCard: View {
 
     var body: some View {
         if let mood = memory.mood {
-            HStack(spacing: AppSpacing.m) {
+            HStack(spacing: 10) {
                 Text(mood.emoji)
-                    .font(.system(size: 38))
-                    .frame(width: 56, height: 56)
-                    .background(Circle().fill(AppGradient.glass))
-                    .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("HOW IT FELT")
-                        .font(.clash(10, weight: .semibold))
-                        .tracking(1.2)
-                        .foregroundColor(AppColor.inkMuted)
-                    Text(mood.label)
-                        .font(.clash(22, weight: .bold))
-                        .foregroundStyle(AppGradient.hero)
-                }
-
+                    .font(.system(size: 22))
+                Text("HOW IT FELT")
+                    .font(.clash(9, weight: .semibold))
+                    .tracking(1.1)
+                    .foregroundColor(AppColor.inkMuted)
+                Text(mood.label)
+                    .font(.clash(15, weight: .bold))
+                    .foregroundStyle(AppGradient.hero)
                 Spacer(minLength: 0)
             }
-            .glassCard()
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous)
+                    .stroke(Color.white.opacity(0.6), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.04), radius: 5, y: 2)
         }
     }
 }

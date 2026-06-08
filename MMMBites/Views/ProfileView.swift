@@ -30,6 +30,7 @@ struct ProfileView: View {
     @State private var showFriendsSheet = false
     @State private var showNotificationsInfo = false
     @State private var showPrivacyInfo = false
+    @State private var showRecap = false
     @State private var friendNamesByID: [String: String] = [:]
 
     init(
@@ -212,6 +213,15 @@ struct ProfileView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
+            .sheet(isPresented: $showRecap) {
+                RecapView(
+                    memories: memories,
+                    friendNamesByID: friendNamesByID
+                )
+                .environmentObject(authViewModel)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
             .sheet(isPresented: $showNotificationsInfo) {
                 ComingSoonSheet(
                     title: "Notifications",
@@ -390,6 +400,23 @@ struct ProfileView: View {
                     )
                 }
             }
+
+            Button {
+                Haptics.tap()
+                showRecap = true
+            } label: {
+                HStack(spacing: 6) {
+                    Text("See your full recap")
+                        .font(.clash(12, weight: .semibold))
+                        .foregroundStyle(AppGradient.hero)
+                    Image(systemName: "arrow.right")
+                        .font(.clash(11, weight: .bold))
+                        .foregroundStyle(AppGradient.hero)
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .buttonStyle(.plain)
+            .pressableScale(0.98)
         }
         .padding(AppSpacing.l)
         .frame(maxWidth: .infinity, alignment: .leading)
