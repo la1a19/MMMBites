@@ -19,6 +19,7 @@ final class AlbumsViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var isLoading = false
     @Published var hasInitiallyLoaded = false
+    @Published var ownerUsers: [String: User] = [:]
 
     private let database = Firestore.firestore()
 
@@ -119,6 +120,30 @@ final class AlbumsViewModel: ObservableObject {
         }
         albums = merged.values.sorted { $0.updatedAt > $1.updatedAt }
         startMemoryListeners(forAlbumIDs: albums.map(\.id))
+        Task { await loadOwnerUsers() }
+    }
+
+    private func loadOwnerUsers() async {
+        let neededIDs = Set(albums.map(\.ownerId)).subtracting(ownerUsers.keys)
+        guard !neededIDs.isEmpty else { return }
+
+        var loaded = ownerUsers
+        for chunk in Array(neededIDs).chunked(into: 30) {
+            do {
+                let snapshot = try await database
+                    .collection("users")
+                    .whereField(FieldPath.documentID(), in: chunk)
+                    .getDocuments()
+                for document in snapshot.documents {
+                    if let user = try? document.data(as: User.self), let id = user.id {
+                        loaded[id] = user
+                    }
+                }
+            } catch {
+                print("[AlbumsViewModel] owner load error: \(error)")
+            }
+        }
+        ownerUsers = loaded
     }
 
     private func startMemoryListeners(forAlbumIDs albumIDs: [String]) {
@@ -142,7 +167,13 @@ final class AlbumsViewModel: ObservableObject {
                             return
                         }
                         let decoded: [Memory] = snapshot?.documents.compactMap { doc in
-                            try? doc.data(as: Memory.self)
+                            guard var memory = try? doc.data(as: Memory.self) else { return nil }
+                            // Mirror MemoriesViewModel: fall back to locally
+                            // cached photo bytes when Storage URLs aren't set yet.
+                            if memory.imageURLs.isEmpty {
+                                memory.photoData = LocalPhotoCache.loadMemoryPhotos(memoryID: memory.id)
+                            }
+                            return memory
                         } ?? []
                         self.memoriesByChunk[index] = decoded
                         self.publishMergedMemories()

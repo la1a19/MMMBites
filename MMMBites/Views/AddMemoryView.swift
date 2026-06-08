@@ -162,7 +162,7 @@ struct AddMemoryView: View {
         .animation(AppAnimation.snappy, value: memorableTags)
         .animation(AppAnimation.snappy, value: participants)
         .animation(AppAnimation.snappy, value: showOptionalDetails)
-        .task(id: authViewModel.currentUser?.friendIDs ?? []) {
+        .task(id: album.friendIds + [album.ownerId]) {
             await loadFriends()
         }
         .sheet(isPresented: $showFriendPicker) {
@@ -207,8 +207,16 @@ struct AddMemoryView: View {
     // MARK: - Friend loading
 
     private func loadFriends() async {
-        let friendIDs = authViewModel.currentUser?.friendIDs ?? []
-        guard !friendIDs.isEmpty else {
+        // The picker is constrained to people who are part of THIS album:
+        // album owner + album.friendIds. Even if I'm friends with someone
+        // outside the album, they can't be tagged in a memory inside it.
+        var pickerIDs = Set(album.friendIds)
+        pickerIDs.insert(album.ownerId)
+        if let currentUserID = authViewModel.currentUser?.id {
+            pickerIDs.remove(currentUserID)
+        }
+
+        guard !pickerIDs.isEmpty else {
             friendUsers = []
             return
         }
@@ -218,7 +226,7 @@ struct AddMemoryView: View {
 
         let database = Firestore.firestore()
         var loaded: [User] = []
-        for chunk in friendIDs.chunked(into: 30) {
+        for chunk in Array(pickerIDs).chunked(into: 30) {
             do {
                 let snapshot = try await database
                     .collection("users")
@@ -1091,6 +1099,7 @@ struct AddMemoryView: View {
                 bestBite: trimmedBite.isEmpty ? nil : trimmedBite,
                 memorableTags: memorableTags,
                 participantIds: participants,
+                friendMemorableTags: original.friendMemorableTags,
                 date: date,
                 createdAt: original.createdAt,
                 updatedAt: Date()

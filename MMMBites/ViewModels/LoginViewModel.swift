@@ -20,8 +20,12 @@ class LoginViewModel: ObservableObject {
     @Published var friendSearchResults: [User] = []
     @Published var friendSearchMessage = ""
     @Published var isSearchingFriends = false
+    @Published var incomingRequests: [FriendRequest] = []
+    @Published var outgoingRequests: [FriendRequest] = []
 
     private var authStateHandle: AuthStateDidChangeListenerHandle?
+    private var incomingRequestListener: ListenerRegistration?
+    private var outgoingRequestListener: ListenerRegistration?
     private let database = Firestore.firestore()
 
     init() {
@@ -32,9 +36,11 @@ class LoginViewModel: ObservableObject {
                 self?.isLoggedIn = (user != nil)
                 if let uid = user?.uid {
                     await self?.fetchCurrentUser(uid: uid)
+                    self?.startFriendRequestListeners(for: uid)
                 } else {
                     self?.currentUser = nil
                     self?.friendSearchResults = []
+                    self?.stopFriendRequestListeners()
                 }
             }
         }
@@ -56,6 +62,49 @@ class LoginViewModel: ObservableObject {
         if let handle = authStateHandle {
             Auth.auth().removeStateDidChangeListener(handle)
         }
+        incomingRequestListener?.remove()
+        outgoingRequestListener?.remove()
+    }
+
+    private func startFriendRequestListeners(for userID: String) {
+        stopFriendRequestListeners()
+
+        incomingRequestListener = database.collection("friendRequests")
+            .whereField("toUserId", isEqualTo: userID)
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    if let error {
+                        print("[LoginViewModel] incoming request error: \(error)")
+                        return
+                    }
+                    self?.incomingRequests = snapshot?.documents.compactMap {
+                        try? $0.data(as: FriendRequest.self)
+                    } ?? []
+                }
+            }
+
+        outgoingRequestListener = database.collection("friendRequests")
+            .whereField("fromUserId", isEqualTo: userID)
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    if let error {
+                        print("[LoginViewModel] outgoing request error: \(error)")
+                        return
+                    }
+                    self?.outgoingRequests = snapshot?.documents.compactMap {
+                        try? $0.data(as: FriendRequest.self)
+                    } ?? []
+                }
+            }
+    }
+
+    private func stopFriendRequestListeners() {
+        incomingRequestListener?.remove()
+        outgoingRequestListener?.remove()
+        incomingRequestListener = nil
+        outgoingRequestListener = nil
+        incomingRequests = []
+        outgoingRequests = []
     }
 
     func login(email: String, password: String) async {
@@ -114,12 +163,16 @@ class LoginViewModel: ObservableObject {
                 .getDocuments()
 
             let existingFriendIDs = Set(currentUser?.friendIDs ?? [])
+            let pendingOutgoing = Set(outgoingRequests.map(\.toUserId))
+            let pendingIncoming = Set(incomingRequests.map(\.fromUserId))
             friendSearchResults = snapshot.documents.compactMap { document in
                 guard var user = try? document.data(as: User.self) else { return nil }
                 user.id = user.id ?? document.documentID
                 guard let userID = user.id,
                       userID != currentUserID,
-                      !existingFriendIDs.contains(userID) else {
+                      !existingFriendIDs.contains(userID),
+                      !pendingOutgoing.contains(userID),
+                      !pendingIncoming.contains(userID) else {
                     return nil
                 }
                 return user
@@ -133,40 +186,57 @@ class LoginViewModel: ObservableObject {
         }
     }
 
-    func addFriend(_ user: User) async {
+    func sendFriendRequest(to user: User) async {
         guard let currentUserID = Auth.auth().currentUser?.uid,
-              let friendID = user.id else {
-            friendSearchMessage = "Couldn't add this user"
+              let friendID = user.id,
+              let me = currentUser else {
+            friendSearchMessage = "Couldn't send request"
             return
         }
 
+        guard friendID != currentUserID else {
+            friendSearchMessage = "That's you"
+            return
+        }
+
+        guard !me.friendIDs.contains(friendID) else {
+            friendSearchMessage = "You're already friends"
+            return
+        }
+
+        // If they've already sent us a request, accept it instead of creating
+        // a duplicate outgoing one — feels natural and avoids stuck states.
+        if let pendingIncoming = incomingRequests.first(where: { $0.fromUserId == friendID }) {
+            await acceptFriendRequest(pendingIncoming)
+            return
+        }
+
+        guard !outgoingRequests.contains(where: { $0.toUserId == friendID }) else {
+            friendSearchMessage = "Request already sent"
+            return
+        }
+
+        let docID = FriendRequest.documentID(fromUserId: currentUserID, toUserId: friendID)
+        let request = FriendRequest(
+            id: docID,
+            fromUserId: currentUserID,
+            toUserId: friendID,
+            fromUsername: me.username,
+            fromAvatarData: me.avatarData,
+            toUsername: user.username,
+            toAvatarData: user.avatarData
+        )
+
         do {
-            _ = try await database.runTransaction { transaction, _ in
-                let currentRef = self.database.collection("users").document(currentUserID)
-                let friendRef = self.database.collection("users").document(friendID)
-
-                transaction.updateData([
-                    "friendIDs": FieldValue.arrayUnion([friendID])
-                ], forDocument: currentRef)
-
-                transaction.updateData([
-                    "friendIDs": FieldValue.arrayUnion([currentUserID])
-                ], forDocument: friendRef)
-
-                return nil
-            }
-
-            if currentUser?.friendIDs.contains(friendID) == false {
-                currentUser?.friendIDs.append(friendID)
-            }
+            try database.collection("friendRequests").document(docID).setData(from: request)
             friendSearchResults.removeAll { $0.id == friendID }
-            friendSearchMessage = "Added \(user.username)"
+            friendSearchMessage = "Request sent to \(user.username)"
         } catch {
             friendSearchMessage = error.localizedDescription
         }
     }
 
-    func addFriend(userID: String) async {
+    func sendFriendRequest(toUserID userID: String) async {
         guard let currentUserID = Auth.auth().currentUser?.uid else {
             friendSearchMessage = "Log in before adding friends"
             return
@@ -194,7 +264,60 @@ class LoginViewModel: ObservableObject {
             }
 
             user.id = user.id ?? snapshot.documentID
-            await addFriend(user)
+            await sendFriendRequest(to: user)
+        } catch {
+            friendSearchMessage = error.localizedDescription
+        }
+    }
+
+    func acceptFriendRequest(_ request: FriendRequest) async {
+        guard let currentUserID = Auth.auth().currentUser?.uid,
+              currentUserID == request.toUserId,
+              let docID = request.id else {
+            friendSearchMessage = "Couldn't accept request"
+            return
+        }
+
+        do {
+            _ = try await database.runTransaction { transaction, _ in
+                let meRef = self.database.collection("users").document(currentUserID)
+                let themRef = self.database.collection("users").document(request.fromUserId)
+                let requestRef = self.database.collection("friendRequests").document(docID)
+
+                transaction.updateData([
+                    "friendIDs": FieldValue.arrayUnion([request.fromUserId])
+                ], forDocument: meRef)
+
+                transaction.updateData([
+                    "friendIDs": FieldValue.arrayUnion([currentUserID])
+                ], forDocument: themRef)
+
+                transaction.deleteDocument(requestRef)
+                return nil
+            }
+
+            if currentUser?.friendIDs.contains(request.fromUserId) == false {
+                currentUser?.friendIDs.append(request.fromUserId)
+            }
+            friendSearchMessage = "You're now friends with \(request.fromUsername)"
+        } catch {
+            friendSearchMessage = error.localizedDescription
+        }
+    }
+
+    func declineFriendRequest(_ request: FriendRequest) async {
+        guard let docID = request.id else { return }
+        do {
+            try await database.collection("friendRequests").document(docID).delete()
+        } catch {
+            friendSearchMessage = error.localizedDescription
+        }
+    }
+
+    func cancelFriendRequest(_ request: FriendRequest) async {
+        guard let docID = request.id else { return }
+        do {
+            try await database.collection("friendRequests").document(docID).delete()
         } catch {
             friendSearchMessage = error.localizedDescription
         }
@@ -237,5 +360,52 @@ class LoginViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func updateAvatar(_ data: Data?) async {
+        guard let currentUserID = Auth.auth().currentUser?.uid else { return }
+
+        let base64String: String?
+        if let data, let resized = Self.resizedAvatarData(from: data) {
+            base64String = resized.base64EncodedString()
+        } else {
+            base64String = nil
+        }
+
+        do {
+            try await database.collection("users").document(currentUserID).setData(
+                ["avatarData": base64String as Any],
+                merge: true
+            )
+            currentUser?.avatarData = base64String
+        } catch {
+            errorMessage = "Couldn't save profile photo: \(error.localizedDescription)"
+            showError = true
+        }
+    }
+
+    /// Down-samples to a 256-pt square JPEG so the base64 string fits comfortably
+    /// in a Firestore document.
+    private static func resizedAvatarData(from data: Data) -> Data? {
+        guard let image = UIImage(data: data) else { return nil }
+        let target: CGFloat = 256
+        let targetSize = CGSize(width: target, height: target)
+        let aspect = image.size.width / max(image.size.height, 1)
+        let drawRect: CGRect
+        if aspect > 1 {
+            let width = target * aspect
+            drawRect = CGRect(x: (target - width) / 2, y: 0, width: width, height: target)
+        } else {
+            let height = target / aspect
+            drawRect = CGRect(x: 0, y: (target - height) / 2, width: target, height: height)
+        }
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+        let resized = renderer.image { _ in
+            image.draw(in: drawRect)
+        }
+        return resized.jpegData(compressionQuality: 0.75)
     }
 }

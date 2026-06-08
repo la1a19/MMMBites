@@ -18,6 +18,7 @@ struct ProfileView: View {
     let albumCount: Int
     let friendCount: Int
     var memories: [Memory] = []
+    var albums: [Album] = []
     var profilePhotoData: Data?
     var onProfilePhotoChange: (Data?) -> Void
 
@@ -40,6 +41,7 @@ struct ProfileView: View {
         albumCount: Int = 3,
         friendCount: Int = 6,
         memories: [Memory] = [],
+        albums: [Album] = [],
         profilePhotoData: Data? = nil,
         onProfilePhotoChange: @escaping (Data?) -> Void = { _ in }
     ) {
@@ -49,6 +51,7 @@ struct ProfileView: View {
         self.albumCount = albumCount
         self.friendCount = friendCount
         self.memories = memories
+        self.albums = albums
         self.profilePhotoData = profilePhotoData
         self.onProfilePhotoChange = onProfilePhotoChange
         _selectedPhotoData = State(initialValue: profilePhotoData)
@@ -208,7 +211,7 @@ struct ProfileView: View {
                 await resolveFriendNames(for: participantIDsToResolve)
             }
             .sheet(isPresented: $showFriendsSheet) {
-                FriendsSheet(memories: memories)
+                FriendsSheet(memories: memories, albums: albums)
                     .environmentObject(authViewModel)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
@@ -302,6 +305,10 @@ struct ProfileView: View {
             onProfilePhotoChange(data)
             Haptics.success()
         }
+
+        // Persist to the user doc so it survives restart AND other views
+        // (which read `currentUser.avatarData`) reflect the new avatar.
+        await authViewModel.updateAvatar(data)
     }
 
     // MARK: - Stat tile
@@ -502,6 +509,7 @@ struct ProfileView: View {
 
 struct FriendsSheet: View {
     let memories: [Memory]
+    var albums: [Album] = []
 
     @EnvironmentObject private var viewModel: LoginViewModel
     @Environment(\.dismiss) private var dismiss
@@ -534,6 +542,14 @@ struct FriendsSheet: View {
                             searchResultsSection
                         }
 
+                        if !viewModel.incomingRequests.isEmpty {
+                            incomingRequestsSection
+                        }
+
+                        if !viewModel.outgoingRequests.isEmpty {
+                            outgoingRequestsSection
+                        }
+
                         yourFriendsSection
                     }
                     .padding(AppSpacing.xl)
@@ -557,7 +573,8 @@ struct FriendsSheet: View {
         .sheet(item: $selectedFriend) { friend in
             FriendMemoriesSheet(
                 friend: friend,
-                memories: memories.filter { $0.participantIds.contains(friend.id ?? "") }
+                memories: sharedMemories(with: friend),
+                albums: albums
             )
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
@@ -572,7 +589,7 @@ struct FriendsSheet: View {
         }
         .sheet(isPresented: $showQRScanner) {
             QRScannerSheet { userID in
-                Task { await viewModel.addFriend(userID: userID) }
+                Task { await viewModel.sendFriendRequest(toUserID: userID) }
             }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
@@ -663,7 +680,8 @@ struct FriendsSheet: View {
 
             ForEach(viewModel.friendSearchResults) { user in
                 Button {
-                    Task { await viewModel.addFriend(user) }
+                    Haptics.tap()
+                    Task { await viewModel.sendFriendRequest(to: user) }
                 } label: {
                     HStack(spacing: AppSpacing.m) {
                         AvatarView(initials: user.username, size: 44)
@@ -678,9 +696,16 @@ struct FriendsSheet: View {
                             }
                         }
                         Spacer()
-                        Image(systemName: "plus.circle.fill")
-                            .font(.clash(22, weight: .semibold))
-                            .foregroundStyle(AppGradient.hero)
+                        HStack(spacing: 4) {
+                            Image(systemName: "person.crop.circle.badge.plus")
+                                .font(.clash(13, weight: .bold))
+                            Text("Send Request")
+                                .font(.clash(11, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(AppGradient.hero))
                     }
                     .padding(AppSpacing.m)
                     .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous))
@@ -692,6 +717,128 @@ struct FriendsSheet: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+
+    // MARK: - Friend requests
+
+    private var incomingRequestsSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.s) {
+            sectionLabel("FRIEND REQUESTS · \(viewModel.incomingRequests.count)")
+            ForEach(viewModel.incomingRequests) { request in
+                incomingRequestRow(request)
+            }
+        }
+    }
+
+    private func incomingRequestRow(_ request: FriendRequest) -> some View {
+        HStack(spacing: AppSpacing.m) {
+            AvatarView(
+                avatar: requestAvatar(from: request.fromAvatarData),
+                initials: request.fromUsername,
+                size: 44
+            )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(request.fromUsername)
+                    .font(.clash(16, weight: .semibold))
+                    .foregroundColor(AppColor.ink)
+                Text("wants to be friends")
+                    .font(AppFont.caption)
+                    .foregroundColor(AppColor.inkMuted)
+            }
+            Spacer(minLength: 0)
+            HStack(spacing: 6) {
+                Button {
+                    Haptics.success()
+                    Task { await viewModel.acceptFriendRequest(request) }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.clash(13, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(AppGradient.hero))
+                        .shadow(color: AppColor.primary.opacity(0.3), radius: 6, y: 3)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    Haptics.warning()
+                    Task { await viewModel.declineFriendRequest(request) }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.clash(13, weight: .bold))
+                        .foregroundColor(AppColor.inkMuted)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(Color.white.opacity(0.85)))
+                        .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(AppSpacing.m)
+        .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous)
+                .stroke(Color.white.opacity(0.6), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
+    }
+
+    private var outgoingRequestsSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.s) {
+            sectionLabel("SENT · \(viewModel.outgoingRequests.count)")
+            ForEach(viewModel.outgoingRequests) { request in
+                outgoingRequestRow(request)
+            }
+        }
+    }
+
+    private func outgoingRequestRow(_ request: FriendRequest) -> some View {
+        HStack(spacing: AppSpacing.m) {
+            AvatarView(
+                avatar: requestAvatar(from: request.toAvatarData),
+                initials: request.toUsername,
+                size: 40
+            )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(request.toUsername)
+                    .font(.clash(15, weight: .semibold))
+                    .foregroundColor(AppColor.ink)
+                Text("Pending")
+                    .font(AppFont.caption)
+                    .foregroundColor(AppColor.inkMuted)
+            }
+            Spacer(minLength: 0)
+            Button {
+                Haptics.tap()
+                Task { await viewModel.cancelFriendRequest(request) }
+            } label: {
+                Text("Cancel")
+                    .font(.clash(11, weight: .semibold))
+                    .foregroundColor(AppColor.inkMuted)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(Color.white.opacity(0.8)))
+                    .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, AppSpacing.m)
+        .padding(.vertical, AppSpacing.s)
+        .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous)
+                .stroke(Color.white.opacity(0.6), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.04), radius: 6, y: 3)
+    }
+
+    private func requestAvatar(from base64: String?) -> Image? {
+        guard
+            let base64,
+            let data = Data(base64Encoded: base64),
+            let uiImage = UIImage(data: data)
+        else { return nil }
+        return Image(uiImage: uiImage)
     }
 
     // MARK: - Your friends
@@ -810,8 +957,14 @@ struct FriendsSheet: View {
     }
 
     private func sharedMemoryCount(for friend: User) -> Int {
-        guard let id = friend.id else { return 0 }
-        return memories.reduce(0) { $0 + ($1.participantIds.contains(id) ? 1 : 0) }
+        sharedMemories(with: friend).count
+    }
+
+    private func sharedMemories(with friend: User) -> [Memory] {
+        guard let currentUserID, let friendID = friend.id else { return [] }
+        return memories.filter { memory in
+            memory.includesUser(currentUserID) && memory.includesUser(friendID)
+        }
     }
 
     private func avatarImage(for user: User) -> Image? {
@@ -1197,6 +1350,7 @@ private struct ProfileHighlights {
 private struct FriendMemoriesSheet: View {
     let friend: User
     let memories: [Memory]
+    var albums: [Album] = []
 
     @Environment(\.dismiss) private var dismiss
 
@@ -1276,31 +1430,42 @@ private struct FriendMemoriesSheet: View {
     }
 
     private func memoryCell(_ memory: Memory) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            MemoryPhotoThumbnail(
-                photoData: memory.photoData,
-                imageURLs: memory.imageURLs,
-                width: 108,
-                height: 108,
-                isCircle: false
+        let parentAlbum = albums.first { $0.id == memory.albumId }
+        return NavigationLink {
+            MemoryDetailView(
+                memory: memory,
+                albumTitle: parentAlbum?.title ?? "Memory",
+                album: parentAlbum
             )
-            .frame(maxWidth: .infinity)
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                MemoryPhotoThumbnail(
+                    photoData: memory.photoData,
+                    imageURLs: memory.imageURLs,
+                    width: 108,
+                    height: 108,
+                    isCircle: false
+                )
+                .frame(maxWidth: .infinity)
 
-            Text(memory.title)
-                .font(.clash(12, weight: .semibold))
-                .foregroundColor(AppColor.ink)
-                .lineLimit(1)
-            Text(memory.date.formatted(date: .abbreviated, time: .omitted))
-                .font(.clash(10, weight: .medium))
-                .foregroundColor(AppColor.inkFaint)
+                Text(memory.title)
+                    .font(.clash(12, weight: .semibold))
+                    .foregroundColor(AppColor.ink)
+                    .lineLimit(1)
+                Text(memory.date.formatted(date: .abbreviated, time: .omitted))
+                    .font(.clash(10, weight: .medium))
+                    .foregroundColor(AppColor.inkFaint)
+            }
+            .padding(8)
+            .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
+                    .stroke(Color.white.opacity(0.6), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.04), radius: 5, y: 2)
         }
-        .padding(8)
-        .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
-                .stroke(Color.white.opacity(0.6), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.04), radius: 5, y: 2)
+        .buttonStyle(.plain)
+        .pressableScale()
     }
 }
 

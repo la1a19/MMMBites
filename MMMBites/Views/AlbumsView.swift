@@ -139,6 +139,7 @@ struct AlbumsView: View {
                     albumCount: viewModel.albums.count,
                     friendCount: currentFriendCount,
                     memories: viewModel.memories,
+                    albums: viewModel.albums,
                     profilePhotoData: currentAvatarData
                 ) { newPhotoData in
                     profilePhotoData = newPhotoData
@@ -149,7 +150,7 @@ struct AlbumsView: View {
                 SettingsView()
             }
             .sheet(isPresented: $showFriends) {
-                FriendsSheet(memories: viewModel.memories)
+                FriendsSheet(memories: viewModel.memories, albums: viewModel.albums)
                     .environmentObject(authViewModel)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
@@ -575,6 +576,8 @@ struct AlbumsView: View {
                 .font(.clash(18, weight: .medium))
                 .tracking(0.5)
                 .foregroundColor(AppColor.ink)
+
+            ownerByLine(for: album, size: 14, compact: true)
         }
         .padding(.vertical, AppSpacing.m)
     }
@@ -674,6 +677,8 @@ struct AlbumsView: View {
                 .font(.clash(26, weight: .medium))
                 .tracking(1)
                 .foregroundColor(AppColor.ink)
+
+            ownerByLine(for: album, size: 20)
 
             // Hairline accent
             Rectangle()
@@ -977,6 +982,42 @@ struct AlbumsView: View {
         return album.title.localizedCaseInsensitiveContains(query)
         || (album.location?.localizedCaseInsensitiveContains(query) ?? false)
         || album.tags.contains { $0.localizedCaseInsensitiveContains(query) }
+    }
+
+    private func ownerDisplayName(for album: Album) -> String {
+        if album.ownerId == authViewModel.currentUser?.id {
+            return authViewModel.currentUser?.username ?? "User"
+        }
+        return viewModel.ownerUsers[album.ownerId]?.username ?? "Friend"
+    }
+
+    private func ownerAvatarImage(for album: Album) -> Image? {
+        let base64: String?
+        if album.ownerId == authViewModel.currentUser?.id {
+            base64 = authViewModel.currentUser?.avatarData
+        } else {
+            base64 = viewModel.ownerUsers[album.ownerId]?.avatarData
+        }
+        guard
+            let base64,
+            let data = Data(base64Encoded: base64),
+            let uiImage = UIImage(data: data)
+        else { return nil }
+        return Image(uiImage: uiImage)
+    }
+
+    private func ownerByLine(for album: Album, size: CGFloat = 18, compact: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            AvatarView(
+                avatar: ownerAvatarImage(for: album),
+                initials: ownerDisplayName(for: album),
+                size: size
+            )
+            Text("by \(ownerDisplayName(for: album))")
+                .font(.clash(compact ? 10 : 11, weight: .semibold))
+                .foregroundColor(AppColor.inkMuted)
+                .lineLimit(1)
+        }
     }
 
     private func coverPhotoData(for album: Album) -> [Data] {

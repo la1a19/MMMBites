@@ -91,8 +91,47 @@ struct AlbumDetailView: View {
     }
 
     private var participantIDs: [String] {
-        Array(Set(album.friendIds + memories.flatMap(\.participantIds) + memories.compactMap(\.capturedById)))
-            .sorted()
+        var ids = Set(album.friendIds + memories.flatMap(\.participantIds) + memories.compactMap(\.capturedById))
+        ids.insert(album.ownerId)
+        return Array(ids).sorted()
+    }
+
+    private var ownerDisplayName: String {
+        if album.ownerId == currentUserID {
+            return authViewModel.currentUser?.username ?? "User"
+        }
+        return friendUsers.first(where: { $0.id == album.ownerId })?.username ?? "Friend"
+    }
+
+    private var ownerAvatarImage: Image? {
+        let base64: String?
+        if album.ownerId == currentUserID {
+            base64 = authViewModel.currentUser?.avatarData
+        } else {
+            base64 = friendUsers.first(where: { $0.id == album.ownerId })?.avatarData
+        }
+        guard
+            let base64,
+            let data = Data(base64Encoded: base64),
+            let uiImage = UIImage(data: data)
+        else { return nil }
+        return Image(uiImage: uiImage)
+    }
+
+    @ViewBuilder
+    private var ownerByLine: some View {
+        HStack(spacing: 6) {
+            AvatarView(
+                avatar: ownerAvatarImage,
+                initials: ownerDisplayName,
+                size: 22
+            )
+            Text("by \(ownerDisplayName)")
+                .font(AppFont.caption.weight(.semibold))
+                .foregroundColor(hasCoverArt ? .white.opacity(0.95) : AppColor.inkMuted)
+                .shadow(color: hasCoverArt ? .black.opacity(0.45) : .clear, radius: 4, y: 1)
+                .lineLimit(1)
+        }
     }
 
     var body: some View {
@@ -204,6 +243,8 @@ struct AlbumDetailView: View {
     private var albumHeaderCard: some View {
         VStack(alignment: .leading, spacing: AppSpacing.s) {
             albumTitleText
+
+            ownerByLine
 
             if let location = album.location, !location.isEmpty {
                 Button {

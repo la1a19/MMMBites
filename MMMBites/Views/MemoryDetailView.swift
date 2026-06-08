@@ -52,8 +52,24 @@ struct MemoryDetailView: View {
         authViewModel.currentUser?.id
     }
 
+    private var currentUsername: String {
+        authViewModel.currentUser?.username ?? "User"
+    }
+
+    private var currentAvatarData: String? {
+        authViewModel.currentUser?.avatarData
+    }
+
     private var canEditMemory: Bool {
         memory.capturedById == currentUserID
+    }
+
+    private var canChooseFriendTags: Bool {
+        guard let currentUserID else { return false }
+        guard memory.capturedById != currentUserID else { return false }
+        if memory.participantIds.contains(currentUserID) { return true }
+        guard let album else { return true }
+        return album.ownerId == currentUserID || album.friendIds.contains(currentUserID)
     }
 
     private var isFavourite: Bool {
@@ -95,8 +111,12 @@ struct MemoryDetailView: View {
 
                     MemoryExtrasCard(
                         memory: memory,
+                        currentUserID: currentUserID,
                         friendName: friendName(for:),
-                        friendAvatarImage: friendAvatarImage(for:)
+                        friendAvatarImage: friendAvatarImage(for:),
+                        canChooseFriendTags: canChooseFriendTags,
+                        onAddFriendTag: addFriendMemorableTag(_:),
+                        onDeleteFriendTag: deleteFriendMemorableTag(_:)
                     )
                     .bounceOnAppear(delay: 0.14)
 
@@ -205,7 +225,7 @@ struct MemoryDetailView: View {
                 withAnimation(AppAnimation.snappy) {
                     memory.note = newNote
                 }
-                onUpdate?(memory)
+                commitMemoryUpdate()
                 Haptics.success()
                 showNoteEditor = false
             }
@@ -357,6 +377,26 @@ private extension MemoryDetailView {
         showNoteEditor = true
     }
 
+    func commitMemoryUpdate() {
+        memory.updatedAt = Date()
+        if let onUpdate {
+            onUpdate(memory)
+            return
+        }
+
+        let updatedMemory = memory
+        Task {
+            do {
+                try Firestore.firestore()
+                    .collection("memories")
+                    .document(updatedMemory.id)
+                    .setData(from: updatedMemory, merge: true)
+            } catch {
+                print("[MemoryDetailView] memory update error: \(error)")
+            }
+        }
+    }
+
     func hasReacted(_ emoji: String) -> Bool {
         guard let currentUserID else { return false }
         return reactions.contains { $0.userId == currentUserID && $0.emoji == emoji }
@@ -370,10 +410,52 @@ private extension MemoryDetailView {
             reactions.append(Reaction(userId: currentUserID, emoji: emoji))
             memory.reactions = reactions
         }
-        onUpdate?(memory)
+        commitMemoryUpdate()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             bumpedEmoji = nil
         }
+    }
+
+    func addFriendMemorableTag(_ tag: String) {
+        guard let currentUserID else { return }
+
+        let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        var updatedTags = memory.friendMemorableTags ?? []
+        let alreadyExistsInMemory = memory.memorableTags.contains {
+            $0.caseInsensitiveCompare(trimmed) == .orderedSame
+        } || updatedTags.contains {
+            $0.tag.caseInsensitiveCompare(trimmed) == .orderedSame
+        }
+        guard !alreadyExistsInMemory else {
+            return
+        }
+
+        updatedTags.append(
+            FriendMemorableTag(
+                userId: currentUserID,
+                username: currentUsername,
+                avatarData: currentAvatarData,
+                tag: trimmed
+            )
+        )
+
+        withAnimation(AppAnimation.snappy) {
+            memory.friendMemorableTags = updatedTags
+        }
+        Haptics.success()
+        commitMemoryUpdate()
+    }
+
+    func deleteFriendMemorableTag(_ tag: FriendMemorableTag) {
+        guard tag.userId == currentUserID else { return }
+
+        let updatedTags = (memory.friendMemorableTags ?? []).filter { $0.id != tag.id }
+        withAnimation(AppAnimation.snappy) {
+            memory.friendMemorableTags = updatedTags.isEmpty ? nil : updatedTags
+        }
+        commitMemoryUpdate()
     }
 
     func triggerDoubleTapLove() {
@@ -392,7 +474,7 @@ private extension MemoryDetailView {
             memory.isFavourite = next
             favouriteBurst = next
         }
-        onUpdate?(memory)
+        commitMemoryUpdate()
         if next {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                 withAnimation(AppAnimation.smooth) { favouriteBurst = false }

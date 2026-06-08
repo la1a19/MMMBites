@@ -125,6 +125,9 @@ struct Memory: Identifiable, Codable {
     // Optional so older Firestore docs without the field still decode.
     var isFavourite: Bool?
 
+    // Friend-selected memorable reasons. Optional for older Firestore docs.
+    var friendMemorableTags: [FriendMemorableTag]?
+
     var date: Date
     var createdAt: Date
     var updatedAt: Date
@@ -135,7 +138,7 @@ struct Memory: Identifiable, Codable {
     enum CodingKeys: String, CodingKey {
         case id, albumId, title, note, imageURLs, location, latitude, longitude
         case capturedById, reactions, mood, bestBite, memorableTags, participantIds
-        case isFavourite, date, createdAt, updatedAt
+        case isFavourite, friendMemorableTags, date, createdAt, updatedAt
     }
 
     init(
@@ -155,6 +158,7 @@ struct Memory: Identifiable, Codable {
         memorableTags: [String] = [],
         participantIds: [String] = [],
         isFavourite: Bool? = nil,
+        friendMemorableTags: [FriendMemorableTag]? = nil,
         date: Date = Date(),
         createdAt: Date = Date(),
         updatedAt: Date = Date()
@@ -175,6 +179,7 @@ struct Memory: Identifiable, Codable {
         self.memorableTags = memorableTags
         self.participantIds = participantIds
         self.isFavourite = isFavourite
+        self.friendMemorableTags = friendMemorableTags
         self.date = date
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -184,6 +189,10 @@ struct Memory: Identifiable, Codable {
 // MARK: - Recap
 
 extension Memory {
+    func includesUser(_ userID: String) -> Bool {
+        capturedById == userID || participantIds.contains(userID)
+    }
+
     /// Short human-readable sentence that explains why this memory mattered.
     /// Generated from mood + people + location + memorable reasons.
     var recapSentence: String {
@@ -246,5 +255,30 @@ struct Reaction: Identifiable, Codable {
         self.id = id
         self.userId = userId
         self.emoji = emoji
+    }
+}
+/// A memorable reason selected by a friend after the memory is created.
+/// Users can choose as many tags as they want; each user/tag pair is unique.
+struct FriendMemorableTag: Identifiable, Codable, Hashable {
+    var userId: String
+    var username: String
+    var avatarData: String?
+    var tag: String
+    var createdAt: Date
+
+    var id: String { "\(userId)-\(tag)" }
+
+    init(
+        userId: String,
+        username: String,
+        avatarData: String? = nil,
+        tag: String,
+        createdAt: Date = Date()
+    ) {
+        self.userId = userId
+        self.username = username
+        self.avatarData = avatarData
+        self.tag = tag
+        self.createdAt = createdAt
     }
 }
