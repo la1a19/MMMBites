@@ -19,7 +19,11 @@ struct SignUpView: View {
 
     var body: some View {
         ZStack {
-            AppBackground(variant: .warm)
+            // Animated Background
+            AnimatedBlobBackground()
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+
 
             ScrollView {
                 VStack(spacing: AppSpacing.xl) {
