@@ -480,10 +480,9 @@ struct AlbumsView: View {
     }
 
     private var carouselView: some View {
-        VStack(spacing: AppSpacing.l) {
-            // Frame 1 — swipeable photo bubbles
-            TabView(selection: $currentPage) {
-                ForEach(Array(filteredAlbums.enumerated()), id: \.element.id) { index, album in
+        TabView(selection: $currentPage) {
+            ForEach(Array(filteredAlbums.enumerated()), id: \.element.id) { index, album in
+                VStack(spacing: AppSpacing.l) {
                     NavigationLink {
                         AlbumDetailView(
                             album: album,
@@ -499,25 +498,14 @@ struct AlbumsView: View {
                         photoBubble(album, isActive: index == currentPage)
                     }
                     .buttonStyle(.plain)
-                    .tag(index)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            .frame(height: 340)
-            .animation(AppAnimation.smooth, value: currentPage)
 
-            // Frame 2 — separate info card that animates when currentPage changes
-            if let currentAlbum = currentAlbum {
-                albumInfoCard(currentAlbum)
-                    .id(currentAlbum.id)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .move(edge: .leading).combined(with: .opacity)
-                        )
-                    )
+                    albumInfoCard(album)
+                }
+                .tag(index)
             }
         }
+        .tabViewStyle(.page(indexDisplayMode: .always))
+        .frame(height: 540)
         .animation(AppAnimation.smooth, value: currentPage)
     }
 

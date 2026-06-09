@@ -446,6 +446,7 @@ struct AddAlbumView: View {
                     .frame(width: 260, height: 260)
                     .blur(radius: 24)
                     .opacity(0.4)
+                
 
                 if let coverPhotoData,
                    let image = UIImage(data: coverPhotoData) {
@@ -478,6 +479,10 @@ struct AddAlbumView: View {
                         )
                 }
 
+                Circle()
+                    .stroke(Color.white.opacity(0.8), lineWidth: 3)
+                    .frame(width: 240, height: 240)
+
                 // Edit (pencil) overlay
                 Circle()
                     .fill(AppGradient.hero)
@@ -491,7 +496,6 @@ struct AddAlbumView: View {
                     .shadow(color: AppColor.primary.opacity(0.45), radius: 12, y: 6)
                     .offset(x: 70, y: 70)
             }
-            .overlay(Circle().stroke(Color.white.opacity(0.8), lineWidth: 3).frame(width: 240, height: 240))
         }
         .buttonStyle(.plain)
         .pressableScale(0.97)
