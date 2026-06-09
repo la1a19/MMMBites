@@ -8,72 +8,49 @@
 
 import SwiftUI
 import PhotosUI
-import MapKit
-import FirebaseAuth
-import FirebaseFirestore
 
 struct AddMemoryView: View {
     let album: Album
     let memoryToEdit: Memory?
-    let existingMemories: [Memory]
     var onSave: (Memory) -> Void = { _ in }
 
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var authViewModel: LoginViewModel
 
     @State private var title: String
     @State private var mood: MemoryMood?
-    @State private var memorableTags: [String]
-    @State private var memorableTagSearchText: String = ""
+    @State private var memorableReasons: Set<MemorableReason>
     @State private var bestBite: String
     @State private var note: String
-    @State private var participants: [String]    // user IDs of tagged friends
+    @State private var participants: [String]
     @State private var date: Date
-    @State private var location: String
-    @State private var selectedLatitude: Double?
-    @State private var selectedLongitude: Double?
-    @StateObject private var locationSearch = LocationSearchCompleter()
-    @FocusState private var isLocationFocused: Bool
     @State private var showFriendPicker = false
     @State private var showDatePicker = false
-    @State private var showOptionalDetails: Bool
 
     // Photo picking
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var photoData: [Data]
-    @State private var showPhotoSourceDialog = false
-    @State private var showPhotoLibraryPicker = false
-    @State private var showCameraPicker = false
 
-    // Real friends loaded from Firestore for the picker / display.
-    @State private var friendUsers: [User] = []
-    @State private var isLoadingFriends = false
+    private let allFriends = ["Judy", "Mira", "Alex", "Sam", "Lila", "Nina", "Theo", "Ben"]
 
     private var isEditing: Bool { memoryToEdit != nil }
 
     init(
         album: Album,
         memoryToEdit: Memory? = nil,
-        existingMemories: [Memory] = [],
         onSave: @escaping (Memory) -> Void = { _ in }
     ) {
         self.album = album
         self.memoryToEdit = memoryToEdit
-        self.existingMemories = existingMemories
         self.onSave = onSave
 
         _title             = State(initialValue: memoryToEdit?.title ?? "")
         _mood              = State(initialValue: memoryToEdit?.mood)
-        _memorableTags     = State(initialValue: memoryToEdit?.memorableTags ?? [])
+        _memorableReasons  = State(initialValue: Set(memoryToEdit?.memorableReasons ?? []))
         _bestBite          = State(initialValue: memoryToEdit?.bestBite ?? "")
         _note              = State(initialValue: memoryToEdit?.note ?? "")
         _participants      = State(initialValue: memoryToEdit?.participantIds ?? [])
         _date              = State(initialValue: memoryToEdit?.date ?? Date())
         _photoData         = State(initialValue: memoryToEdit?.photoData ?? [])
-        _location          = State(initialValue: memoryToEdit?.location ?? "")
-        _selectedLatitude  = State(initialValue: memoryToEdit?.latitude)
-        _selectedLongitude = State(initialValue: memoryToEdit?.longitude)
-        _showOptionalDetails = State(initialValue: memoryToEdit != nil)
     }
 
     var body: some View {
@@ -83,51 +60,29 @@ struct AddMemoryView: View {
             ScrollView {
                 VStack(spacing: AppSpacing.xl) {
 
-                    titleField
+                    photosField
                         .bounceOnAppear()
 
-                    photosField
+                    titleField
                         .bounceOnAppear(delay: 0.03)
 
-                    VStack(alignment: .leading, spacing: AppSpacing.m) {
-                        HStack(alignment: .top, spacing: AppSpacing.m) {
-                            dateSection
-                            locationSection
-                        }
-
-                        if showDatePicker {
-                            datePickerPopup
-                                .transition(.opacity.combined(with: .move(edge: .top)))
-                        }
-
-                        if let suggestion = locationSuggestionMemory {
-                            locationHintCard(for: suggestion)
-                                .transition(.opacity.combined(with: .move(edge: .top)))
-                        }
-                    }
-                    .animation(AppAnimation.snappy, value: locationSuggestionMemory?.id)
-                    .bounceOnAppear(delay: 0.05)
+                    dateSection
+                        .bounceOnAppear(delay: 0.04)
 
                     moodSection
-                        .bounceOnAppear(delay: 0.08)
-
-                    bestBiteSection
-                        .bounceOnAppear(delay: 0.1)
+                        .bounceOnAppear(delay: 0.05)
 
                     memorableSection
-                        .bounceOnAppear(delay: 0.12)
+                        .bounceOnAppear(delay: 0.1)
+
+                    bestBiteSection
+                        .bounceOnAppear(delay: 0.15)
 
                     peopleSection
-                        .bounceOnAppear(delay: 0.14)
+                        .bounceOnAppear(delay: 0.2)
 
-                    optionalDetailsToggle
-                        .bounceOnAppear(delay: 0.16)
-
-                    if showOptionalDetails {
-                        noteSection
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                            .bounceOnAppear(delay: 0.18)
-                    }
+                    noteSection
+                        .bounceOnAppear(delay: 0.25)
 
                     PrimaryButton(
                         title: isEditing ? "Save changes" : "Save meal memory",
@@ -145,7 +100,7 @@ struct AddMemoryView: View {
         .navigationTitle(isEditing ? "Edit Meal Memory" : "Start a Meal Memory")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .topBarLeading) {
                 Button {
                     Haptics.tap()
                     dismiss()
@@ -154,141 +109,67 @@ struct AddMemoryView: View {
                         .font(.clash(13, weight: .bold))
                         .foregroundColor(AppColor.ink)
                         .frame(width: 32, height: 32)
-                        .glassCircleSurface()
+                        .background(AppGradient.glass, in: Circle())
                 }
             }
         }
         .animation(AppAnimation.snappy, value: mood)
-        .animation(AppAnimation.snappy, value: memorableTags)
+        .animation(AppAnimation.snappy, value: memorableReasons)
         .animation(AppAnimation.snappy, value: participants)
-        .animation(AppAnimation.snappy, value: showOptionalDetails)
-        .task(id: album.friendIds + [album.ownerId]) {
-            await loadFriends()
-        }
         .sheet(isPresented: $showFriendPicker) {
             FriendPickerSheet(
-                allFriends: friendUsers,
-                selectedFriendIDs: $participants,
-                isLoading: isLoadingFriends
+                allFriends: allFriends,
+                selectedFriends: $participants
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
-        .confirmationDialog("Add a photo", isPresented: $showPhotoSourceDialog, titleVisibility: .visible) {
-            Button("Take Photo") {
-                showCameraPicker = true
-            }
-            Button("Choose from Library") {
-                showPhotoLibraryPicker = true
-            }
-            Button("Cancel", role: .cancel) { }
-        }
-        .photosPicker(
-            isPresented: $showPhotoLibraryPicker,
-            selection: $pickerItems,
-            maxSelectionCount: max(1, 5 - photoData.count),
-            matching: .images,
-            photoLibrary: .shared()
-        )
-        .fullScreenCover(isPresented: $showCameraPicker) {
-            CameraCaptureView { data in
-                guard let data else { return }
-                withAnimation(AppAnimation.snappy) {
-                    if photoData.count < 5 {
-                        photoData.append(data)
-                    }
-                }
-                Haptics.success()
-            }
-            .ignoresSafeArea()
-        }
-    }
-
-    // MARK: - Friend loading
-
-    private func loadFriends() async {
-        // The picker is constrained to people who are part of THIS album:
-        // album owner + album.friendIds. Even if I'm friends with someone
-        // outside the album, they can't be tagged in a memory inside it.
-        var pickerIDs = Set(album.friendIds)
-        pickerIDs.insert(album.ownerId)
-        if let currentUserID = authViewModel.currentUser?.id {
-            pickerIDs.remove(currentUserID)
-        }
-
-        guard !pickerIDs.isEmpty else {
-            friendUsers = []
-            return
-        }
-
-        isLoadingFriends = true
-        defer { isLoadingFriends = false }
-
-        let database = Firestore.firestore()
-        var loaded: [User] = []
-        for chunk in Array(pickerIDs).chunked(into: 30) {
-            do {
-                let snapshot = try await database
-                    .collection("users")
-                    .whereField(FieldPath.documentID(), in: chunk)
-                    .getDocuments()
-                loaded.append(contentsOf: snapshot.documents.compactMap {
-                    try? $0.data(as: User.self)
-                })
-            } catch {
-                print("[AddMemoryView] friend load error: \(error)")
-            }
-        }
-        friendUsers = loaded.sorted {
-            $0.username.localizedCaseInsensitiveCompare($1.username) == .orderedAscending
-        }
-    }
-
-    private func friendName(for id: String) -> String {
-        friendUsers.first(where: { $0.id == id })?.username ?? "Unknown"
-    }
-
-    private func friendAvatarImage(for id: String) -> Image? {
-        guard
-            let base64 = friendUsers.first(where: { $0.id == id })?.avatarData,
-            let data = Data(base64Encoded: base64),
-            let uiImage = UIImage(data: data)
-        else { return nil }
-        return Image(uiImage: uiImage)
     }
 
     // MARK: - Photos
 
     private var photosField: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionLabel("PHOTOS")
-
-            if photoData.isEmpty {
-                Button {
-                    Haptics.tap()
-                    showPhotoSourceDialog = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "camera.fill")
-                            .font(.clash(15, weight: .semibold))
-                        Text("Pick a few photos or snap one right now")
+            HStack {
+                sectionLabel("PHOTOS")
+                Spacer()
+                PhotosPicker(
+                    selection: $pickerItems,
+                    maxSelectionCount: 5,
+                    matching: .images,
+                    photoLibrary: .shared()
+                ) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "photo.badge.plus")
+                            .font(.clash(12, weight: .bold))
+                        Text(photoData.isEmpty ? "Add photos" : "Change")
                             .font(.clash(12, weight: .semibold))
                     }
-                    .foregroundColor(AppColor.inkMuted)
-                    .padding(.vertical, 22)
-                    .padding(.horizontal, 16)
-                    .frame(maxWidth: .infinity)
-                    .background(Color.white.opacity(0.52), in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
-                            .strokeBorder(
-                                AppColor.primary.opacity(0.42),
-                                style: StrokeStyle(lineWidth: 1.4, dash: [4, 4])
-                            )
-                    )
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Capsule().fill(AppGradient.hero))
+                    .shadow(color: AppColor.primary.opacity(0.35), radius: 6, y: 3)
                 }
-                .buttonStyle(.plain)
-                .pressableScale(0.98)
+            }
+
+            if photoData.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "camera.fill")
+                    Text("Pick a few photos to remember this meal by")
+                }
+                .font(.clash(12, weight: .medium))
+                .foregroundColor(AppColor.inkFaint)
+                .padding(.vertical, 22)
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
+                        .strokeBorder(
+                            AppColor.inkFaint.opacity(0.4),
+                            style: StrokeStyle(lineWidth: 1.2, dash: [4, 4])
+                        )
+                )
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: AppSpacing.s) {
@@ -329,30 +210,6 @@ struct AddMemoryView: View {
                                 .transition(.scale.combined(with: .opacity))
                             }
                         }
-
-                        Button {
-                            Haptics.tap()
-                            showPhotoSourceDialog = true
-                        } label: {
-                            VStack(spacing: 7) {
-                                Image(systemName: "photo.badge.plus")
-                                    .font(.clash(18, weight: .semibold))
-                                Text("Add")
-                                    .font(AppFont.tiny)
-                            }
-                            .foregroundColor(AppColor.inkMuted)
-                            .frame(width: 86, height: 110)
-                            .background(Color.white.opacity(0.54), in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
-                                    .strokeBorder(
-                                        AppColor.primary.opacity(0.42),
-                                        style: StrokeStyle(lineWidth: 1.3, dash: [4, 4])
-                                    )
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .pressableScale(0.96)
                     }
                 }
             }
@@ -364,24 +221,17 @@ struct AddMemoryView: View {
     }
 
     private func loadPickedPhotos(_ items: [PhotosPickerItem]) async {
-        guard !items.isEmpty else { return }
-
         var loaded: [Data] = []
         for item in items {
             if let data = try? await item.loadTransferable(type: Data.self) {
                 loaded.append(data)
             }
         }
-
         await MainActor.run {
             withAnimation(AppAnimation.snappy) {
-                let remainingSlots = max(0, 5 - photoData.count)
-                photoData.append(contentsOf: loaded.prefix(remainingSlots))
+                photoData = loaded
             }
-            pickerItems = []
-            if !loaded.isEmpty {
-                Haptics.success()
-            }
+            Haptics.success()
         }
     }
 
@@ -396,57 +246,21 @@ struct AddMemoryView: View {
                 .autocorrectionDisabled(true)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
-                .fieldSurface()
+                .background(Color.white.opacity(0.85),
+                            in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
+                        .stroke(Color.white.opacity(0.6), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
         }
-    }
-
-    // MARK: - Optional details
-
-    private var optionalDetailsToggle: some View {
-        Button {
-            Haptics.tap()
-            withAnimation(AppAnimation.snappy) {
-                showOptionalDetails.toggle()
-            }
-        } label: {
-            HStack(spacing: AppSpacing.m) {
-                ZStack {
-                    Circle()
-                        .fill(AppColor.secondary.opacity(0.18))
-                        .frame(width: 34, height: 34)
-                    Image(systemName: showOptionalDetails ? "minus" : "plus")
-                        .font(.clash(13, weight: .bold))
-                        .foregroundColor(AppColor.secondary)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(showOptionalDetails ? "Hide note" : "Add a note")
-                        .font(AppFont.headline)
-                        .foregroundColor(AppColor.ink)
-                    Text("Anything else worth keeping in your own words")
-                        .font(AppFont.caption)
-                        .foregroundColor(AppColor.inkMuted)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
-
-                Spacer()
-
-                Image(systemName: showOptionalDetails ? "chevron.up" : "chevron.down")
-                    .font(.clash(11, weight: .bold))
-                    .foregroundColor(AppColor.inkFaint)
-            }
-            .glassCard(radius: AppRadius.m, padding: AppSpacing.l)
-        }
-        .buttonStyle(.plain)
-        .pressableScale(0.98)
     }
 
     // MARK: - Date
 
     private var dateSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("WHEN")
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("WHEN WAS THIS MEMORY?")
 
             Button {
                 Haptics.tap()
@@ -454,488 +268,122 @@ struct AddMemoryView: View {
                     showDatePicker.toggle()
                 }
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Image(systemName: "calendar")
-                        .font(.clash(12, weight: .semibold))
                         .foregroundColor(AppColor.secondary)
                     Text(date, style: .date)
-                        .font(.clash(12, weight: .semibold))
+                        .font(AppFont.subheadline.weight(.semibold))
                         .foregroundColor(AppColor.ink)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    Spacer(minLength: 0)
+                    Spacer()
+                    Image(systemName: showDatePicker ? "chevron.up" : "chevron.down")
+                        .font(.clash(11, weight: .bold))
+                        .foregroundColor(AppColor.inkFaint)
                 }
-                .frame(minHeight: 22)
-                .pillSurface()
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color.white.opacity(0.85), in: Capsule(style: .continuous))
+                .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
+                .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
             }
             .buttonStyle(.plain)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
 
-    private var datePickerPopup: some View {
-        DatePicker("Memory date", selection: $date, displayedComponents: .date)
-            .datePickerStyle(.graphical)
-            .tint(AppColor.primary)
-            .padding(8)
-            .frame(maxWidth: .infinity)
-            .glassCard(radius: AppRadius.m, padding: 0)
-    }
-
-    // MARK: - Location
-
-    private var locationSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("LOCATION")
-
-            HStack(spacing: 6) {
-                Image(systemName: "mappin.and.ellipse")
-                    .font(.clash(12, weight: .semibold))
-                    .foregroundColor(AppColor.primary)
-                TextField("e.g. Bills, Bondi", text: $location)
-                    .font(.clash(12, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .focused($isLocationFocused)
-                    .autocorrectionDisabled(true)
-                    .textInputAutocapitalization(.words)
-                    .submitLabel(.done)
-                    .onSubmit { useTypedLocation() }
-                    .onChange(of: location) { _, newValue in
-                        selectedLatitude = nil
-                        selectedLongitude = nil
-                        locationSearch.update(query: newValue)
-                    }
-                Spacer(minLength: 0)
-            }
-            .frame(minHeight: 22)
-            .pillSurface()
-
-            if isLocationFocused && shouldShowLocationSuggestions {
-                locationSuggestions
+            if showDatePicker {
+                DatePicker("Memory date", selection: $date, displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .tint(AppColor.primary)
+                    .padding(8)
+                    .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous)
+                            .stroke(Color.white.opacity(0.6), lineWidth: 1)
+                    )
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: - Location hint (same place suggestion)
-
-    private var locationSuggestionMemory: Memory? {
-        let normalized = location
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        guard normalized.count >= 2 else { return nil }
-
-        let editingID = memoryToEdit?.id
-
-        let matches = existingMemories.filter { memory in
-            guard memory.id != editingID,
-                  let loc = memory.location?.lowercased(),
-                  !loc.isEmpty else { return false }
-            return loc.contains(normalized) || normalized.contains(loc)
-        }
-        return matches.sorted { $0.date > $1.date }.first
-    }
-
-    private func locationHintCard(for memory: Memory) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                    .font(.clash(11, weight: .bold))
-                    .foregroundStyle(AppGradient.hero)
-                Text("YOU'VE BEEN HERE BEFORE")
-                    .font(.clash(10, weight: .semibold))
-                    .tracking(1.2)
-                    .foregroundStyle(AppGradient.hero)
-                Spacer(minLength: 0)
-            }
-
-            HStack(spacing: 6) {
-                Text(timeAgoLabel(from: memory.date))
-                    .font(.clash(13, weight: .semibold))
-                    .foregroundColor(AppColor.ink)
-                Text("·")
-                    .foregroundColor(AppColor.inkFaint)
-                Text(memory.title)
-                    .font(.clash(13, weight: .medium))
-                    .foregroundColor(AppColor.inkMuted)
-                    .lineLimit(1)
-            }
-
-            if memory.mood != nil || !(memory.bestBite ?? "").isEmpty {
-                HStack(spacing: 8) {
-                    if let mood = memory.mood {
-                        HStack(spacing: 4) {
-                            Text(mood.emoji).font(.system(size: 12))
-                            Text("felt \(mood.label.lowercased())")
-                                .font(.clash(11, weight: .medium))
-                                .foregroundColor(AppColor.inkMuted)
-                        }
-                    }
-                    if let bite = memory.bestBite, !bite.isEmpty {
-                        HStack(spacing: 4) {
-                            Image(systemName: "fork.knife")
-                                .font(.clash(9, weight: .semibold))
-                                .foregroundColor(AppColor.accent)
-                            Text(bite)
-                                .font(.clash(11, weight: .medium))
-                                .foregroundColor(AppColor.inkMuted)
-                                .lineLimit(1)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, AppSpacing.m)
-        .padding(.vertical, AppSpacing.s)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppGradient.glass, in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
-                .stroke(AppColor.primary.opacity(0.35), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.04), radius: 5, y: 2)
-    }
-
-    private func timeAgoLabel(from date: Date) -> String {
-        let interval = Date().timeIntervalSince(date)
-        let days = Int(interval / 86400)
-        switch days {
-        case ..<1:    return "earlier today"
-        case 1:       return "yesterday"
-        case 2..<7:   return "\(days) days ago"
-        case 7..<14:  return "a week ago"
-        case 14..<30: return "\(days / 7) weeks ago"
-        case 30..<60: return "a month ago"
-        case 60..<365:
-            let months = days / 30
-            return "\(months) months ago"
-        default:
-            let years = days / 365
-            return years == 1 ? "a year ago" : "\(years) years ago"
-        }
-    }
-
-    private var trimmedLocation: String {
-        location.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var shouldShowLocationSuggestions: Bool {
-        !trimmedLocation.isEmpty &&
-        (!locationSearch.completions.isEmpty || !matchesTopCompletion)
-    }
-
-    private var matchesTopCompletion: Bool {
-        guard let top = locationSearch.completions.first else { return false }
-        return top.title.localizedCaseInsensitiveCompare(trimmedLocation) == .orderedSame
-    }
-
-    private func useTypedLocation() {
-        guard !trimmedLocation.isEmpty else { return }
-        Haptics.selection()
-        location = trimmedLocation
-        selectedLatitude = nil
-        selectedLongitude = nil
-        isLocationFocused = false
-        locationSearch.clear()
-    }
-
-    private var locationSuggestions: some View {
-        VStack(spacing: 0) {
-            useAsTypedRow
-
-            if !locationSearch.completions.isEmpty {
-                Divider().opacity(0.35)
-            }
-
-            ForEach(Array(locationSearch.completions.prefix(4).enumerated()), id: \.element) { index, completion in
-                Button {
-                    selectLocation(completion)
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "mappin.circle.fill")
-                            .foregroundColor(AppColor.primary)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(completion.title)
-                                .font(AppFont.caption.weight(.semibold))
-                                .foregroundColor(AppColor.ink)
-                                .lineLimit(1)
-                            if !completion.subtitle.isEmpty {
-                                Text(completion.subtitle)
-                                    .font(AppFont.tiny)
-                                    .foregroundColor(AppColor.inkFaint)
-                                    .lineLimit(1)
-                            }
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                }
-                .buttonStyle(.plain)
-
-                if index < min(locationSearch.completions.count, 4) - 1 {
-                    Divider().opacity(0.35)
-                }
-            }
-        }
-        .background(Color.white.opacity(0.94), in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
-                .stroke(Color.white.opacity(0.7), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
-    }
-
-    private var useAsTypedRow: some View {
-        Button(action: useTypedLocation) {
-            HStack(spacing: 8) {
-                Image(systemName: "text.cursor")
-                    .foregroundColor(AppColor.secondary)
-                Text("Use \"\(trimmedLocation)\"")
-                    .font(AppFont.caption.weight(.semibold))
-                    .foregroundColor(AppColor.ink)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func selectLocation(_ completion: MKLocalSearchCompletion) {
-        Haptics.selection()
-        location = [completion.title, completion.subtitle]
-            .filter { !$0.isEmpty }
-            .joined(separator: ", ")
-        isLocationFocused = false
-        locationSearch.clear()
-
-        Task {
-            if let coordinate = await locationSearch.coordinate(for: completion) {
-                await MainActor.run {
-                    selectedLatitude = coordinate.latitude
-                    selectedLongitude = coordinate.longitude
-                }
-            }
-        }
-    }
-
     // MARK: - Mood (single select)
 
     private var moodSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             sectionLabel("HOW DID IT FEEL?")
-            FlowLayout(spacing: 7) {
+            FlowLayout(spacing: 8) {
                 ForEach(MemoryMood.allCases) { m in
-                    moodOptionCard(m)
+                    moodChip(m)
                 }
             }
-            .padding(.vertical, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func moodOptionCard(_ m: MemoryMood) -> some View {
+    private func moodChip(_ m: MemoryMood) -> some View {
         let selected = mood == m
         return Button {
             Haptics.selection()
-            mood = m
+            mood = selected ? nil : m
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
                 Text(m.emoji)
-                    .font(.system(size: selected ? 13 : 12))
-                    .frame(width: 15)
-
+                    .font(.system(size: 16))
                 Text(m.label)
-                    .font(.clash(11, weight: selected ? .bold : .semibold))
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
+                    .font(.clash(14, weight: .semibold))
             }
             .foregroundColor(selected ? .white : AppColor.ink)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
             .background(
-                Capsule(style: .continuous)
-                    .fill(selected ? AppGradient.hero : AppGradient.glass)
+                Capsule().fill(selected ? AppColor.primary : Color.white.opacity(0.85))
             )
-            .overlay(
-                Capsule(style: .continuous)
-                    .stroke(selected ? Color.white.opacity(0.86) : Color.white.opacity(0.58),
-                            lineWidth: selected ? 1.5 : 1)
-            )
-            .shadow(
-                color: selected ? AppColor.primary.opacity(0.3) : .black.opacity(0.04),
-                radius: selected ? 5 : 3,
-                y: selected ? 2 : 1
-            )
-            .scaleEffect(selected ? 1.02 : 1)
+            .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
+            .shadow(color: selected ? AppColor.primary.opacity(0.35) : .black.opacity(0.05),
+                    radius: selected ? 8 : 4, y: 2)
+            .scaleEffect(selected ? 1.0 : 0.97)
         }
         .buttonStyle(.plain)
-        .pressableScale(0.96)
     }
 
-    // MARK: - Memorable tags (free-form, multi-select)
+    // MARK: - Memorable reason (multi-select)
 
     private var memorableSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                sectionLabel("WHAT MADE IT MEMORABLE?")
-                if !memorableTags.isEmpty {
-                    Text("\(memorableTags.count)")
-                        .font(AppFont.tiny)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Capsule().fill(AppColor.secondary))
-                }
-                Spacer()
-                compactMemorableInput
-            }
-
-            if memorableTags.isEmpty {
-                memorableEmptyRow
-            } else {
-                FlowLayout(spacing: 10) {
-                    ForEach(memorableTags, id: \.self) { tag in
-                        memorableSelectedChip(tag)
-                    }
+            sectionLabel("WHAT MADE IT MEMORABLE?")
+            FlowLayout(spacing: 8) {
+                ForEach(MemorableReason.allCases) { r in
+                    reasonChip(r)
                 }
             }
-
-            memorableSuggestions
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var compactMemorableInput: some View {
-        HStack(spacing: 6) {
-            TextField("Add", text: $memorableTagSearchText)
-                .font(AppFont.caption)
-                .autocorrectionDisabled(true)
-                .textInputAutocapitalization(.words)
-                .lineLimit(1)
-                .frame(width: 80)
-                .onSubmit { addMemorableFromSearch() }
-
-            Button {
-                addMemorableFromSearch()
-                Haptics.soft()
-            } label: {
-                Image(systemName: "plus")
-                    .font(.clash(11, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 24, height: 24)
-                    .background(Circle().fill(AppGradient.hero))
+    private func reasonChip(_ r: MemorableReason) -> some View {
+        let selected = memorableReasons.contains(r)
+        return Button {
+            Haptics.selection()
+            if selected {
+                memorableReasons.remove(r)
+            } else {
+                memorableReasons.insert(r)
             }
-            .buttonStyle(.plain)
-        }
-        .padding(.leading, 10)
-        .padding(.trailing, 6)
-        .padding(.vertical, 5)
-        .background(Color.white.opacity(0.86), in: Capsule(style: .continuous))
-        .overlay(Capsule().stroke(Color.white.opacity(0.65), lineWidth: 1))
-        .shadow(color: .black.opacity(0.05), radius: 5, y: 2)
-    }
-
-    private var memorableEmptyRow: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "sparkles")
-            Text("Pick a few — or add your own above")
-        }
-        .font(AppFont.caption)
-        .foregroundColor(AppColor.inkFaint)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
-                .strokeBorder(
-                    AppColor.inkFaint.opacity(0.4),
-                    style: StrokeStyle(lineWidth: 1.2, dash: [4, 4])
-                )
-        )
-    }
-
-    private func memorableSelectedChip(_ tag: String) -> some View {
-        HStack(spacing: 6) {
-            Text(tag)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-            Button {
-                withAnimation(AppAnimation.snappy) {
-                    memorableTags.removeAll { $0 == tag }
-                }
-                Haptics.tap()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.clash(11, weight: .bold))
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: r.icon)
+                    .font(.clash(12, weight: .semibold))
+                Text(r.label)
+                    .font(.clash(14, weight: .semibold))
             }
-            .buttonStyle(.plain)
+            .foregroundColor(selected ? .white : AppColor.ink)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(
+                Capsule().fill(selected ? AppColor.secondary : Color.white.opacity(0.85))
+            )
+            .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
+            .shadow(color: selected ? AppColor.secondary.opacity(0.35) : .black.opacity(0.05),
+                    radius: selected ? 8 : 4, y: 2)
         }
-        .font(AppFont.subheadline)
-        .foregroundColor(.white)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(Capsule().fill(AppColor.tag(tag)))
-        .shadow(color: AppColor.tag(tag).opacity(0.4), radius: 6, y: 3)
-        .transition(.scale.combined(with: .opacity))
-    }
-
-    private var memorableSuggestions: some View {
-        let options = MemorableReasonDefault.allLabels.filter { option in
-            !memorableTags.contains { $0.caseInsensitiveCompare(option) == .orderedSame }
-        }
-
-        return VStack(alignment: .leading, spacing: 8) {
-            if !options.isEmpty {
-                Text("SUGGESTED REASONS")
-                    .font(AppFont.tiny)
-                    .foregroundColor(AppColor.inkMuted)
-                    .padding(.leading, 4)
-
-                FlowLayout(spacing: 8) {
-                    ForEach(options, id: \.self) { tag in
-                        Button {
-                            addMemorableSuggested(tag)
-                        } label: {
-                            Text(tag)
-                                .font(AppFont.captionBold)
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .foregroundColor(AppColor.ink)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .background(Color.white.opacity(0.82), in: Capsule(style: .continuous))
-                                .overlay(Capsule().stroke(Color.white.opacity(0.65), lineWidth: 1))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-        }
-    }
-
-    private func addMemorableFromSearch() {
-        let trimmed = memorableTagSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty,
-              !memorableTags.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame })
-        else { return }
-        withAnimation(AppAnimation.bouncy) {
-            memorableTags.append(trimmed)
-        }
-        memorableTagSearchText = ""
-        Haptics.success()
-    }
-
-    private func addMemorableSuggested(_ tag: String) {
-        guard !memorableTags.contains(where: { $0.caseInsensitiveCompare(tag) == .orderedSame }) else { return }
-        withAnimation(AppAnimation.bouncy) {
-            memorableTags.append(tag)
-        }
-        Haptics.selection()
+        .buttonStyle(.plain)
     }
 
     // MARK: - Best bite
@@ -952,7 +400,13 @@ struct AddMemoryView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .fieldSurface()
+            .background(Color.white.opacity(0.85),
+                        in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
+                    .stroke(Color.white.opacity(0.6), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
         }
     }
 
@@ -998,18 +452,13 @@ struct AddMemoryView: View {
                                 )
                         )
                     } else {
-                        ForEach(participants, id: \.self) { friendID in
+                        ForEach(participants, id: \.self) { friend in
                             VStack(spacing: 6) {
                                 ZStack(alignment: .topTrailing) {
-                                    AvatarView(
-                                        avatar: friendAvatarImage(for: friendID),
-                                        initials: friendName(for: friendID),
-                                        size: 60,
-                                        showRing: true
-                                    )
+                                    AvatarView(initials: friend, size: 60, showRing: true)
                                     Button {
                                         withAnimation(AppAnimation.snappy) {
-                                            participants.removeAll { $0 == friendID }
+                                            participants.removeAll { $0 == friend }
                                         }
                                         Haptics.tap()
                                     } label: {
@@ -1023,7 +472,7 @@ struct AddMemoryView: View {
                                     .buttonStyle(.plain)
                                     .offset(x: 2, y: -2)
                                 }
-                                Text(friendName(for: friendID))
+                                Text(friend)
                                     .font(.clash(11, weight: .medium))
                                     .foregroundColor(AppColor.ink)
                             }
@@ -1057,7 +506,13 @@ struct AddMemoryView: View {
                     .padding(.vertical, 10)
                     .frame(minHeight: 120)
             }
-            .fieldSurface()
+            .background(Color.white.opacity(0.85),
+                        in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
+                    .stroke(Color.white.opacity(0.6), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
         }
     }
 
@@ -1075,11 +530,8 @@ struct AddMemoryView: View {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedBite  = bestBite.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedNote  = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedLoc   = location.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedLocation: String? = trimmedLoc.isEmpty ? nil : trimmedLoc
-        let authorID = Auth.auth().currentUser?.uid ?? ""
 
-        // When editing: keep original id/albumId/createdAt/reactions/capturedById.
+        // When editing: keep original id/albumId/createdAt/reactions/capturedById/coords.
         // When creating: build a fresh Memory in the current album.
         let memory: Memory
         if let original = memoryToEdit {
@@ -1090,16 +542,15 @@ struct AddMemoryView: View {
                 note: trimmedNote.isEmpty ? nil : trimmedNote,
                 imageURLs: original.imageURLs,
                 photoData: photoData,
-                location: resolvedLocation,
-                latitude: selectedLatitude,
-                longitude: selectedLongitude,
+                location: original.location,
+                latitude: original.latitude,
+                longitude: original.longitude,
                 capturedById: original.capturedById,
                 reactions: original.reactions,
                 mood: mood,
                 bestBite: trimmedBite.isEmpty ? nil : trimmedBite,
-                memorableTags: memorableTags,
+                memorableReasons: Array(memorableReasons),
                 participantIds: participants,
-                friendMemorableTags: original.friendMemorableTags,
                 date: date,
                 createdAt: original.createdAt,
                 updatedAt: Date()
@@ -1110,13 +561,11 @@ struct AddMemoryView: View {
                 title: trimmedTitle.isEmpty ? "Untitled meal" : trimmedTitle,
                 note: trimmedNote.isEmpty ? nil : trimmedNote,
                 photoData: photoData,
-                location: resolvedLocation,
-                latitude: selectedLatitude,
-                longitude: selectedLongitude,
-                capturedById: authorID,
+                location: album.location,
+                capturedById: "Jisu",
                 mood: mood,
                 bestBite: trimmedBite.isEmpty ? nil : trimmedBite,
-                memorableTags: memorableTags,
+                memorableReasons: Array(memorableReasons),
                 participantIds: participants,
                 date: date
             )
@@ -1128,64 +577,15 @@ struct AddMemoryView: View {
     }
 }
 
-private struct CameraCaptureView: UIViewControllerRepresentable {
-    var onCapture: (Data?) -> Void
-
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = UIImagePickerController.isSourceTypeAvailable(.camera) ? .camera : .photoLibrary
-        picker.delegate = context.coordinator
-        return picker
-    }
-
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onCapture: onCapture)
-    }
-
-    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        private let onCapture: (Data?) -> Void
-        private var didFinish = false
-
-        init(onCapture: @escaping (Data?) -> Void) {
-            self.onCapture = onCapture
-        }
-
-        func imagePickerController(
-            _ picker: UIImagePickerController,
-            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
-        ) {
-            guard !didFinish else { return }
-            didFinish = true
-
-            let image = (info[.editedImage] as? UIImage) ?? (info[.originalImage] as? UIImage)
-            let data = image?.jpegData(compressionQuality: 0.9)
-            picker.dismiss(animated: true) { [onCapture] in
-                onCapture(data)
-            }
-        }
-
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            guard !didFinish else { return }
-            didFinish = true
-            picker.dismiss(animated: true) { [onCapture] in
-                onCapture(nil)
-            }
-        }
-    }
-}
-
 #Preview {
     NavigationStack {
         AddMemoryView(
             album: Album(
                 title: "PARK",
                 ownerId: "jisu",
-                tags: ["Picnic", "Outdoor"],
+                tags: ["Tree", "Picnic"],
                 location: "Centennial Park, Sydney"
             )
         )
-        .environmentObject(LoginViewModel())
     }
 }

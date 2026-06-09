@@ -30,13 +30,13 @@ struct MemoryMapPreview: View {
                 Marker(title, coordinate: coordinate)
                     .tint(AppColor.primary)
             }
-            .frame(height: 110)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
+            .frame(height: 160)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
+                RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous)
                     .stroke(Color.white.opacity(0.6), lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.06), radius: 6, y: 3)
+            .shadow(color: .black.opacity(0.08), radius: 10, y: 6)
             .allowsHitTesting(false)
 
             // Open-in-Maps action button
@@ -44,21 +44,21 @@ struct MemoryMapPreview: View {
                 Haptics.tap()
                 openInMaps()
             } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: 6) {
                     Image(systemName: "arrow.up.right.square.fill")
-                        .font(.clash(10, weight: .bold))
-                    Text("Open")
-                        .font(.clash(10, weight: .semibold))
+                        .font(.clash(12, weight: .bold))
+                    Text("Open in Maps")
+                        .font(.clash(12, weight: .semibold))
                 }
                 .foregroundColor(AppColor.ink)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 5)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
                 .background(AppGradient.glass, in: Capsule(style: .continuous))
                 .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
-                .shadow(color: .black.opacity(0.08), radius: 4, y: 2)
+                .shadow(color: .black.opacity(0.1), radius: 6, y: 3)
             }
             .buttonStyle(.plain)
-            .padding(7)
+            .padding(10)
         }
         .contentShape(RoundedRectangle(cornerRadius: AppRadius.m, style: .continuous))
         .onTapGesture {

@@ -2,166 +2,126 @@
 //  LoginView.swift
 //  MMMBites
 //
+//  Created by Lila Lansang on 3/6/2026.
+//
 
 import SwiftUI
 import FirebaseAuth
 
 struct LoginView: View {
+    @State private var rememberPassword = false
     @State private var email = ""
     @State private var password = ""
-
     @EnvironmentObject var viewModel: LoginViewModel
-
     @State private var showSignUp = false
     @State private var isLoading = false
 
     var body: some View {
         ZStack {
-            // Background
-            AnimatedBlobBackground()
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
+            AppBackground()
 
-            VStack(spacing: 0) {
-
-                // Top spacing
-                Spacer()
-                    .frame(height: 120)
-
-                // Title
-                Text("Log in")
-                    .font(.system(size: 42, weight: .bold))
-                    .foregroundColor(.black)
-
-                Spacer()
-                    .frame(height: 60)
-
-                // Main Form Container
-                VStack(spacing: 24) {
-
-                    // Email
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Email")
-                            .font(.headline)
-
-                        TextField("", text: $email)
-                            .padding()
-                            .background(Color.white)
-                            .cornerRadius(18)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
+            ScrollView {
+                VStack(spacing: AppSpacing.xl) {
+                    // Header
+                    VStack(spacing: AppSpacing.s) {
+                        Text("Welcome back")
+                            .font(AppFont.display)
+                            .foregroundColor(AppColor.ink)
+                        Text("Log in to keep tasting your memories.")
+                            .font(AppFont.subheadline)
+                            .foregroundColor(AppColor.inkMuted)
+                            .multilineTextAlignment(.center)
                     }
+                    .padding(.top, 40)
+                    .bounceOnAppear()
 
-                    // Password
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Password")
-                            .font(.headline)
+                    // Card with fields
+                    VStack(spacing: AppSpacing.l) {
+                        AuthTextField(
+                            label: "Email",
+                            placeholder: "you@example.com",
+                            input: $email,
+                            icon: "envelope.fill"
+                        )
 
-                        SecureField("", text: $password)
-                            .padding()
-                            .background(Color.white)
-                            .cornerRadius(18)
-                    }
+                        AuthTextField(
+                            label: "Password",
+                            placeholder: "Your password",
+                            input: $password,
+                            type: .password,
+                            icon: "lock.fill"
+                        )
 
-                    // Password Reset Message
-                    if viewModel.passwordResetSent {
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark.circle.fill")
-                            Text("Password reset email sent")
-                        }
-                        .font(.caption)
-                        .foregroundColor(.green)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
-                    // Forgot Password
-                    HStack {
-                        Spacer()
-
-                        Button("Forgot Password") {
-                            Task {
-                                await viewModel.forgotPassword(email: email)
+                        // Password reset confirmation
+                        if viewModel.passwordResetSent {
+                            HStack(spacing: 6) {
+                                Image(systemName: "checkmark.seal.fill")
+                                Text("Password reset email sent — check your inbox")
                             }
+                            .font(AppFont.caption)
+                            .foregroundColor(.green)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .transition(.move(edge: .top).combined(with: .opacity))
                         }
-                        .font(.subheadline)
-                        .foregroundColor(.black)
+
+                        HStack {
+                            SecondaryButton(title: "Forgot password?") {
+                                Task { await viewModel.forgotPassword(email: email) }
+                            }
+                            Spacer()
+                        }
                     }
+                    .glassCard()
+                    .padding(.horizontal, AppSpacing.l)
+                    .bounceOnAppear(delay: 0.1)
 
-                    Spacer()
-                        .frame(height: 20)
-
-                    // Login Button
-                    Button {
+                    // Login button
+                    PrimaryButton(title: "Login", icon: "arrow.right", isLoading: isLoading) {
                         Task {
                             isLoading = true
-                            await viewModel.login(
-                                email: email,
-                                password: password
-                            )
+                            await viewModel.login(email: email, password: password)
                             isLoading = false
                         }
-                    } label: {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 18)
-                                .fill(
-                                    Color(
-                                        red: 0.10,
-                                        green: 0.16,
-                                        blue: 0.42
-                                    )
-                                )
-
-                            if isLoading {
-                                ProgressView()
-                                    .tint(.white)
-                            } else {
-                                Text("Login")
-                                    .font(.title3.bold())
-                                    .foregroundColor(.white)
-                            }
-                        }
-                        .frame(height: 60)
                     }
+                    .padding(.horizontal, AppSpacing.xxxl)
+                    .bounceOnAppear(delay: 0.2)
 
-                    Spacer()
+                    // Divider with social-style note
+                    HStack(spacing: AppSpacing.s) {
+                        Rectangle().fill(AppColor.inkFaint.opacity(0.3)).frame(height: 1)
+                        Text("OR")
+                            .font(AppFont.tiny)
+                            .foregroundColor(AppColor.inkFaint)
+                        Rectangle().fill(AppColor.inkFaint.opacity(0.3)).frame(height: 1)
+                    }
+                    .padding(.horizontal, AppSpacing.xxxl)
 
-                    // Sign Up
+                    // Sign up
                     HStack(spacing: 4) {
                         Text("Don't have an account?")
-                            .foregroundColor(.black)
-
-                        Button("Sign up") {
+                            .foregroundColor(AppColor.inkMuted)
+                        Button {
+                            Haptics.tap()
                             showSignUp = true
+                        } label: {
+                            Text("Sign up")
+                                .foregroundStyle(AppGradient.hero)
+                                .fontWeight(.bold)
                         }
-                        .fontWeight(.semibold)
-                        .foregroundColor(.black)
+                        .buttonStyle(.plain)
                     }
-                    .padding(.bottom, 30)
+                    .font(AppFont.subheadline)
+                    .padding(.bottom, AppSpacing.xl)
+                    .sheet(isPresented: $showSignUp) {
+                        SignUpView()
+                    }
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 50)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(
-                    Color(
-                        red: 0.84,
-                        green: 0.90,
-                        blue: 0.97
-                    )
-                )
-                .clipShape(
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: 45,
-                        topTrailingRadius: 45
-                    )
-                )
             }
-            .ignoresSafeArea(edges: .bottom)
+            .scrollDismissesKeyboard(.interactively)
         }
-        .sheet(isPresented: $showSignUp) {
-            SignUpView()
-        }
+        .animation(AppAnimation.snappy, value: viewModel.passwordResetSent)
         .alert("Login Failed", isPresented: $viewModel.showError) {
-            Button("OK", role: .cancel) { }
+            Button("OK", role: .cancel) {}
         } message: {
             Text(viewModel.errorMessage)
         }

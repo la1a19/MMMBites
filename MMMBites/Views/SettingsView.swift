@@ -96,7 +96,7 @@ struct SettingsView: View {
                             .font(.clash(13, weight: .bold))
                             .foregroundColor(AppColor.ink)
                             .frame(width: 32, height: 32)
-                            .glassCircleSurface()
+                            .background(AppGradient.glass, in: Circle())
                     }
                 }
             }
