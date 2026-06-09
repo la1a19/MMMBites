@@ -68,8 +68,8 @@ struct MemoryMapPreview: View {
     }
 
     private func openInMaps() {
-        let location = CLLocation(latitude: latitude, longitude: longitude)
-        let mapItem = MKMapItem(location: location, address: nil)
+        let placemark = MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude))
+        let mapItem = MKMapItem(placemark: placemark)
         mapItem.name = title
         mapItem.openInMaps(launchOptions: [
             MKLaunchOptionsMapTypeKey: MKMapType.standard.rawValue

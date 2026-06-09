@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>CLIENT_ID</key>
-	<string>351768797291-t1v5ssgvb00dn5lad25mt5v72maeg2pp.apps.googleusercontent.com</string>
+	<string>351768797291-oc7jl0quv9u9j4n5nbllk09v2tjqt2o7.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.351768797291-t1v5ssgvb00dn5lad25mt5v72maeg2pp</string>
+	<string>com.googleusercontent.apps.351768797291-oc7jl0quv9u9j4n5nbllk09v2tjqt2o7</string>
 	<key>API_KEY</key>
 	<string>AIzaSyCVglifxmrnhhcrLrV4ltER2qi1J80Q6Bg</string>
 	<key>GCM_SENDER_ID</key>
@@ -13,7 +13,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.minion</string>
+	<string>com.minions.mmmbites</string>
 	<key>PROJECT_ID</key>
 	<string>mmmbites-f8e02</string>
 	<key>STORAGE_BUCKET</key>
@@ -29,6 +29,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:351768797291:ios:f2455161bd22fe7df3d12e</string>
+	<string>1:351768797291:ios:659409970dc6aae1f3d12e</string>
 </dict>
 </plist>
