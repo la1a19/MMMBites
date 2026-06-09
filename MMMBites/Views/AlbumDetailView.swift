@@ -314,8 +314,8 @@ struct AlbumDetailView: View {
     private func openLocationInMaps(_ location: String) {
         Haptics.tap()
         if let lat = album.latitude, let lon = album.longitude {
-            let mapLocation = CLLocation(latitude: lat, longitude: lon)
-            let item = MKMapItem(location: mapLocation, address: nil)
+            let placemark = MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon))
+            let item = MKMapItem(placemark: placemark)
             item.name = location
             item.openInMaps(launchOptions: [
                 MKLaunchOptionsMapTypeKey: NSNumber(value: MKMapType.standard.rawValue)
