@@ -75,9 +75,12 @@ struct AlbumsView: View {
                         titleRow
                             .bounceOnAppear(delay: 0.05)
 
-                        searchRow
-                            .bounceOnAppear(delay: 0.1)
-
+                        SearchFilterBar(
+                            searchText: $searchText,
+                            showFilters: $showFilters
+                        )
+                        .bounceOnAppear(delay: 0.1)
+                        
                         if showFilters {
                             filterPills
                                 .transition(.move(edge: .top).combined(with: .opacity))
@@ -366,78 +369,24 @@ struct AlbumsView: View {
                 Text("Albums")
                     .font(AppFont.display)
                     .foregroundStyle(AppGradient.hero)
+
                 Text("\(viewModel.albums.count) albums · \(viewModel.memoryCount) memories")
                     .font(AppFont.caption)
                     .foregroundColor(AppColor.inkMuted)
             }
+
             Spacer()
-            Button {
+
+            GlassAddButton {
                 Haptics.soft()
                 showAddAlbum = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "plus")
-                        .font(.clash(16, weight: .bold))
-                    Text("New Album")
-                        .font(AppFont.captionBold)
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Capsule().fill(AppGradient.hero))
-                .overlay(Capsule().stroke(Color.white.opacity(0.4), lineWidth: 1))
-                .shadow(color: AppColor.primary.opacity(0.28), radius: 8, y: 4)
             }
-            .buttonStyle(.plain)
             .pressableScale()
         }
     }
-
     // MARK: - Search + filter
 
-    private var searchRow: some View {
-        HStack(spacing: AppSpacing.s) {
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(AppColor.inkFaint)
-                TextField("Search albums", text: $searchText)
-                    .font(AppFont.subheadline)
-                    .autocorrectionDisabled()
-                if !searchText.isEmpty {
-                    Button {
-                        searchText = ""
-                        Haptics.tap()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(AppColor.inkFaint)
-                    }
-                    .buttonStyle(.plain)
-                    .transition(.scale.combined(with: .opacity))
-                }
-            }
-            .padding(.horizontal, 12)
-            .frame(height: 40)
-            .frame(maxWidth: .infinity)
-            .background(AppColor.surface.opacity(0.86), in: Capsule(style: .continuous))
-            .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.58), lineWidth: 1))
-            .shadow(color: .black.opacity(0.04), radius: 5, y: 2)
-
-            Button {
-                Haptics.tap()
-                withAnimation(AppAnimation.snappy) { showFilters.toggle() }
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.clash(14, weight: .semibold))
-                    .foregroundColor(showFilters ? .white : AppColor.ink)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(showFilters ? AppColor.primary : AppColor.surface.opacity(0.88)))
-                    .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-        }
-        .animation(AppAnimation.snappy, value: searchText.isEmpty)
-    }
-
+ 
     // MARK: - Section header
 
     private var sectionHeader: some View {
@@ -480,47 +429,33 @@ struct AlbumsView: View {
     }
 
     private var carouselView: some View {
-        VStack(spacing: AppSpacing.l) {
-            // Frame 1 — swipeable photo bubbles
-            TabView(selection: $currentPage) {
-                ForEach(Array(filteredAlbums.enumerated()), id: \.element.id) { index, album in
-                    NavigationLink {
-                        AlbumDetailView(
-                            album: album,
-                            crossAlbumMemories: viewModel.memories,
-                            onAlbumUpdate: { updatedAlbum in
-                                updateAlbum(updatedAlbum)
-                            },
-                            onAlbumDelete: { deletedAlbum in
-                                deleteAlbum(deletedAlbum)
-                            }
-                        )
-                    } label: {
-                        photoBubble(album, isActive: index == currentPage)
-                    }
-                    .buttonStyle(.plain)
-                    .tag(index)
-                }
+        AlbumBubbleCarouselView(
+            albums: filteredAlbums,
+            currentPage: $currentPage,
+            memories: viewModel.memories,
+            coverPhotoData: { album in
+                coverPhotoData(for: album)
+            },
+            coverImageURLs: { album in
+                coverImageURLs(for: album)
+            },
+            ownerDisplayName: { album in
+                ownerDisplayName(for: album)
+            },
+            ownerAvatarImage: { album in
+                ownerAvatarImage(for: album)
+            },
+            onAlbumUpdate: { updatedAlbum in
+                updateAlbum(updatedAlbum)
+            },
+            onAlbumDelete: { deletedAlbum in
+                deleteAlbum(deletedAlbum)
             }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            .frame(height: 340)
-            .animation(AppAnimation.smooth, value: currentPage)
-
-            // Frame 2 — separate info card that animates when currentPage changes
-            if let currentAlbum = currentAlbum {
-                albumInfoCard(currentAlbum)
-                    .id(currentAlbum.id)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .move(edge: .leading).combined(with: .opacity)
-                        )
-                    )
-            }
-        }
-        .animation(AppAnimation.smooth, value: currentPage)
+        )
     }
+    
 
+    
     private var currentAlbum: Album? {
         guard !filteredAlbums.isEmpty else { return nil }
         let safeIndex = min(max(currentPage, 0), filteredAlbums.count - 1)
@@ -583,141 +518,12 @@ struct AlbumsView: View {
     }
 
     // Frame 1 — just the photo circle (swipeable)
-    private func photoBubble(_ album: Album, isActive: Bool) -> some View {
-        ZStack {
-            // Radial-gradient halo. Fades to fully transparent at the edge of
-            // its own frame, so even if the TabView page clips the visible
-            // area, the clipped portion is already invisible — no sharp
-            // rectangular boundary.
-            Circle()
-                .fill(
-                    RadialGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: AppColor.primary.opacity(isActive ? 0.55 : 0.18), location: 0.0),
-                            .init(color: AppColor.secondary.opacity(isActive ? 0.30 : 0.10), location: 0.45),
-                            .init(color: .clear, location: 1.0)
-                        ]),
-                        center: .center,
-                        startRadius: 90,
-                        endRadius: 170
-                    )
-                )
-                .frame(width: 340, height: 340)
-                .blendMode(.plusLighter)
-                .allowsHitTesting(false)
-
-            MemoryPhotoThumbnail(
-                photoData: coverPhotoData(for: album),
-                imageURLs: coverImageURLs(for: album),
-                width: 280,
-                height: 280,
-                placeholderSystemImage: "photo.on.rectangle.angled"
-            )
-
-            // Bottom pill — shows the album's location, or falls back to
-            // OPEN ALBUM when the album has no location set.
-            VStack {
-                Spacer()
-                bubblePill(for: album)
-                    .padding(.bottom, 14)
-                    .padding(.horizontal, 24)
-            }
-            .frame(width: 280, height: 280)
-        }
-        .frame(width: 340, height: 340)
-        .overlay(
-            Circle()
-                .stroke(Color.white.opacity(0.85), lineWidth: 3)
-                .frame(width: 280, height: 280)
-        )
-        .shadow(color: .black.opacity(0.16), radius: 20, y: 12)
-        .scaleEffect(isActive ? 1.0 : 0.86)
-        .opacity(isActive ? 1.0 : 0.55)
-        .animation(AppAnimation.smooth, value: isActive)
-    }
 
     @ViewBuilder
-    private func bubblePill(for album: Album) -> some View {
-        if let location = album.location, !location.isEmpty {
-            HStack(spacing: 6) {
-                Image(systemName: "mappin.and.ellipse")
-                    .font(.clash(12, weight: .bold))
-                Text(location)
-                    .font(.clash(11, weight: .semibold))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            .foregroundColor(AppColor.ink)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(AppGradient.glass, in: Capsule(style: .continuous))
-            .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
-            .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
-        } else {
-            HStack(spacing: 6) {
-                Image(systemName: "arrow.up.right.circle.fill")
-                    .font(.clash(13, weight: .bold))
-                Text("OPEN ALBUM")
-                    .font(.clash(11, weight: .semibold))
-                    .tracking(1.2)
-            }
-            .foregroundColor(AppColor.ink)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(AppGradient.glass, in: Capsule(style: .continuous))
-            .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
-            .shadow(color: .black.opacity(0.08), radius: 8, y: 4)
-        }
-    }
+ 
 
     // Frame 2 — separate info card (title + tags) shown below the photo
-    private func albumInfoCard(_ album: Album) -> some View {
-        VStack(spacing: AppSpacing.m) {
-            Text(album.title)
-                .font(.clash(26, weight: .medium))
-                .tracking(1)
-                .foregroundColor(AppColor.ink)
-
-            ownerByLine(for: album, size: 20)
-
-            // Hairline accent
-            Rectangle()
-                .fill(AppColor.inkFaint.opacity(0.25))
-                .frame(width: 40, height: 1)
-
-            // Tags
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(album.tags, id: \.self) { tag in
-                        Text(tag.uppercased())
-                            .font(.clash(10, weight: .semibold))
-                            .tracking(1.2)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Capsule().fill(AppColor.tag(tag)))
-                            .shadow(color: AppColor.tag(tag).opacity(0.35), radius: 5, y: 2)
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, AppSpacing.l)
-        .padding(.vertical, AppSpacing.l)
-        .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: AppRadius.l, style: .continuous)
-                .fill(AppGradient.glass)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppRadius.l, style: .continuous)
-                .stroke(Color.white.opacity(0.6), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.08), radius: 14, y: 8)
-        .padding(.horizontal, AppSpacing.m)
-    }
-
+ 
     // MARK: - Empty state
 
     private var emptyState: some View {
