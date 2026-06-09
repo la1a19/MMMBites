@@ -24,6 +24,9 @@ struct AlbumsView: View {
     @State private var showBestBites = false
     @State private var showMemoryMap = false
     @State private var profilePhotoData: Data?
+    @State private var showMemoryBoard = false
+    @State private var navigateToMemoryBoard = false
+
 
     // Album-level categories shown when the filter panel is open.
     private let filterOptions = AlbumTagDefaults.filters
@@ -127,6 +130,16 @@ struct AlbumsView: View {
                     }
                 }
             }
+
+            .sheet(isPresented: $showMemoryBoard) {
+                NavigationStack {
+                    MemoryBoardView(
+                        memories: viewModel.memories,
+                        albums: viewModel.albums
+                    )
+                    .environmentObject(authViewModel)
+                }
+            }
             .task(id: authViewModel.currentUser?.id) {
                 if let uid = authViewModel.currentUser?.id {
                     viewModel.startListening(for: uid)
@@ -134,6 +147,13 @@ struct AlbumsView: View {
                     viewModel.stopListening()
                 }
             }
+            .navigationDestination(isPresented: $navigateToMemoryBoard) {
+                            MemoryBoardView(
+                                memories: viewModel.memories,
+                                albums: viewModel.albums
+                            )
+                            .environmentObject(authViewModel)
+                        }
             .sheet(isPresented: $showProfile) {
                 ProfileView(
                     username: currentUsername,
@@ -221,9 +241,9 @@ struct AlbumsView: View {
         HStack(spacing: AppSpacing.s) {
             Button {
                 Haptics.tap()
-                withAnimation(AppAnimation.snappy) { showGridView.toggle() }
+                navigateToMemoryBoard = true
             } label: {
-                Image(systemName: showGridView ? "rectangle.stack.fill" : "square.grid.2x2.fill")
+                Image(systemName: "rectangle.3.group.bubble.left.fill")
                     .font(.clash(16, weight: .semibold))
                     .foregroundColor(AppColor.ink)
                     .frame(width: 38, height: 38)
@@ -391,7 +411,7 @@ struct AlbumsView: View {
 
     private var sectionHeader: some View {
         HStack(alignment: .center) {
-            Text(showGridView ? "Album Grid" : "Bite Bubbles")
+            Text("Bite Bubbles")
                 .font(AppFont.titleSmall)
                 .foregroundColor(AppColor.ink)
             Spacer()
@@ -414,8 +434,6 @@ struct AlbumsView: View {
                 loadingPlaceholder
             } else if filteredAlbums.isEmpty {
                 emptyState
-            } else if showGridView {
-                gridView
             } else {
                 carouselView
             }
