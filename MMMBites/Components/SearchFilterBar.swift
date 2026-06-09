@@ -11,7 +11,6 @@
 //
 //  Created by Yat Tin lee on 5/6/2026.
 //
-
 import SwiftUI
 
 struct SearchFilterBar: View {
@@ -19,68 +18,81 @@ struct SearchFilterBar: View {
     @Binding var showFilters: Bool
 
     var body: some View {
-        GeometryReader { geometry in
-            HStack(spacing: 0) {
-                // Left search area: 70%
-                HStack {
-                    TextField("Search albums", text: $searchText)
+        HStack(spacing: 10) {
+            // Search field
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.black.opacity(0.55))
 
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.black)
-                }
-                .padding(.horizontal, 16)
-                .frame(width: geometry.size.width * 0.7, height: 46)
-                .background(.white)
-                .clipShape(
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: 23,
-                        bottomLeadingRadius: 23,
-                        bottomTrailingRadius: 0,
-                        topTrailingRadius: 0
-                    )
-                )
+                TextField("Search albums", text: $searchText)
+                    .foregroundColor(.black)
+                    .autocorrectionDisabled()
 
-                // Right filter button: 30%
-                Button {
-                    withAnimation(.easeInOut) {
-                        showFilters.toggle()
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                        Haptics.tap()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.black.opacity(0.35))
                     }
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
-                        .foregroundColor(.black.opacity(0.75))
-                        .frame(width: geometry.size.width * 0.3, height: 46)
-                        .background {
-                            UnevenRoundedRectangle(
-                                topLeadingRadius: 0,
-                                bottomLeadingRadius: 0,
-                                bottomTrailingRadius: 23,
-                                topTrailingRadius: 23
-                            )
-                            .fill(.ultraThinMaterial)
-                        }
-                        .overlay {
-                            UnevenRoundedRectangle(
-                                topLeadingRadius: 0,
-                                bottomLeadingRadius: 0,
-                                bottomTrailingRadius: 23,
-                                topTrailingRadius: 23
-                            )
-                            .stroke(.white.opacity(0.65), lineWidth: 1)
-                        }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
-            .compositingGroup()
+            .padding(.horizontal, 16)
+            .frame(height: 46)
+            .frame(maxWidth: .infinity)
+            .background {
+                RoundedRectangle(cornerRadius: 23, style: .continuous)
+                    .fill(.white.opacity(0.88))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 23, style: .continuous)
+                    .stroke(.white.opacity(0.65), lineWidth: 1)
+            }
             .shadow(
-                color: .black.opacity(0.25),
+                color: .black.opacity(0.16),
                 radius: 4,
                 x: 0,
                 y: 2
             )
+
+            // Filter button
+            Button {
+                Haptics.tap()
+                withAnimation(.easeInOut) {
+                    showFilters.toggle()
+                }
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(showFilters ? .white : .black.opacity(0.75))
+                    .frame(width: 52, height: 46)
+                    .background {
+                        RoundedRectangle(cornerRadius: 23, style: .continuous)
+                            .fill(showFilters ? AppColor.primary.opacity(0.82) : Color.white.opacity(0.34))
+                            .background {
+                                RoundedRectangle(cornerRadius: 23, style: .continuous)
+                                    .fill(.ultraThinMaterial)
+                            }
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 23, style: .continuous)
+                            .stroke(.white.opacity(0.65), lineWidth: 1)
+                    }
+                    .shadow(
+                        color: showFilters ? AppColor.primary.opacity(0.28) : .black.opacity(0.16),
+                        radius: 4,
+                        x: 0,
+                        y: 2
+                    )
+            }
+            .buttonStyle(.plain)
         }
         .frame(height: 46)
     }
 }
+
 #Preview {
     ZStack {
         AppBackground()
@@ -89,6 +101,6 @@ struct SearchFilterBar: View {
             searchText: .constant(""),
             showFilters: .constant(false)
         )
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 24)
     }
 }
