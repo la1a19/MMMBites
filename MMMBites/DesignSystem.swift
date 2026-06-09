@@ -102,8 +102,7 @@ enum AppGradient {
 // SwiftUI automatically falls back to the system font.
 //
 // Expected PostScript names:
-//   ClashGrotesk-Extralight, ClashGrotesk-Light, ClashGrotesk-Regular,
-//   ClashGrotesk-Medium, ClashGrotesk-Semibold, ClashGrotesk-Bold
+//   Pally-Regular, Pally-Medium, Pally-Bold
 
 extension Font {
     static func clash(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
@@ -112,13 +111,11 @@ extension Font {
 
     private static func clashPostScriptName(for weight: Font.Weight) -> String {
         switch weight {
-        case .ultraLight, .thin:        return "ClashGrotesk-Extralight"
-        case .light:                    return "ClashGrotesk-Light"
-        case .regular:                  return "ClashGrotesk-Regular"
-        case .medium:                   return "ClashGrotesk-Medium"
-        case .semibold:                 return "ClashGrotesk-Semibold"
-        case .bold, .heavy, .black:     return "ClashGrotesk-Bold"
-        default:                        return "ClashGrotesk-Regular"
+        case .ultraLight, .thin, .light: return "Pally-Regular"
+        case .regular:                   return "Pally-Regular"
+        case .medium, .semibold:         return "Pally-Medium"
+        case .bold, .heavy, .black:      return "Pally-Bold"
+        default:                         return "Pally-Regular"
         }
     }
 }

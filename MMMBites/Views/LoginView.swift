@@ -30,7 +30,7 @@ struct LoginView: View {
 
                 // Title
                 Text("Log in")
-                    .font(.system(size: 42, weight: .bold))
+                    .font(.clash(42, weight: .bold))
                     .foregroundColor(.black)
 
                 Spacer()
@@ -42,7 +42,7 @@ struct LoginView: View {
                     // Email
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Email")
-                            .font(.headline)
+                            .font(.clash(17, weight: .semibold))
 
                         TextField("", text: $email)
                             .padding()
@@ -55,7 +55,7 @@ struct LoginView: View {
                     // Password
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Password")
-                            .font(.headline)
+                            .font(.clash(17, weight: .semibold))
 
                         SecureField("", text: $password)
                             .padding()
@@ -69,7 +69,7 @@ struct LoginView: View {
                             Image(systemName: "checkmark.circle.fill")
                             Text("Password reset email sent")
                         }
-                        .font(.caption)
+                        .font(.clash(12))
                         .foregroundColor(.green)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -83,7 +83,7 @@ struct LoginView: View {
                                 await viewModel.forgotPassword(email: email)
                             }
                         }
-                        .font(.subheadline)
+                        .font(.clash(15))
                         .foregroundColor(.black)
                     }
 
@@ -116,7 +116,7 @@ struct LoginView: View {
                                     .tint(.white)
                             } else {
                                 Text("Login")
-                                    .font(.title3.bold())
+                                    .font(.clash(20, weight: .bold))
                                     .foregroundColor(.white)
                             }
                         }
@@ -128,12 +128,13 @@ struct LoginView: View {
                     // Sign Up
                     HStack(spacing: 4) {
                         Text("Don't have an account?")
+                            .font(.clash(15))
                             .foregroundColor(.black)
 
                         Button("Sign up") {
                             showSignUp = true
                         }
-                        .fontWeight(.semibold)
+                        .font(.clash(15, weight: .semibold))
                         .foregroundColor(.black)
                     }
                     .padding(.bottom, 30)
