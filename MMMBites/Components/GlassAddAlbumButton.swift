@@ -17,16 +17,26 @@ struct GlassAddButton: View {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(.black.opacity(0.75))
+                .foregroundColor(.white)
                 .frame(width: 52, height: 46)
                 .background {
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .fill(.ultraThinMaterial)
+                        .fill(AppColor.primary.opacity(0.82))
+                        .background {
+                            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                        }
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .stroke(.white.opacity(0.65), lineWidth: 1)
+                        .stroke(Color.white.opacity(0.65), lineWidth: 1)
                 }
+                .shadow(
+                    color: AppColor.primary.opacity(0.32),
+                    radius: 8,
+                    x: 0,
+                    y: 4
+                )
                 .shadow(
                     color: .black.opacity(0.25),
                     radius: 4,
