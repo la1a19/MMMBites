@@ -271,6 +271,75 @@ final class AlbumsViewModel: ObservableObject {
         }
     }
 
+    /// Replace `oldTag` with `newTag` on every owned album that uses it.
+    /// Comparison is case-insensitive; new value is stored capitalized.
+    func renameTagInAlbums(from oldTag: String, to newTag: String) async {
+        guard let currentUserID else { return }
+        let normalizedOld = oldTag.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedNew = newTag.trimmingCharacters(in: .whitespacesAndNewlines).capitalized
+        guard !normalizedOld.isEmpty, !normalizedNew.isEmpty,
+              normalizedOld.caseInsensitiveCompare(normalizedNew) != .orderedSame else { return }
+
+        let affected = albums.filter { album in
+            album.ownerId == currentUserID &&
+            album.tags.contains { $0.caseInsensitiveCompare(normalizedOld) == .orderedSame }
+        }
+        guard !affected.isEmpty else { return }
+
+        do {
+            for chunk in affected.chunked(into: 400) {
+                let batch = database.batch()
+                for album in chunk {
+                    let updatedTags = album.tags.map { tag -> String in
+                        tag.caseInsensitiveCompare(normalizedOld) == .orderedSame ? normalizedNew : tag
+                    }
+                    let ref = database.collection("albums").document(album.id)
+                    batch.updateData([
+                        "tags": updatedTags,
+                        "updatedAt": Timestamp(date: Date())
+                    ], forDocument: ref)
+                }
+                try await batch.commit()
+            }
+        } catch {
+            print("[AlbumsViewModel] tag rename error: \(error)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Remove `tag` from every owned album that uses it (case-insensitive match).
+    func removeTagFromAlbums(_ tag: String) async {
+        guard let currentUserID else { return }
+        let normalized = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return }
+
+        let affected = albums.filter { album in
+            album.ownerId == currentUserID &&
+            album.tags.contains { $0.caseInsensitiveCompare(normalized) == .orderedSame }
+        }
+        guard !affected.isEmpty else { return }
+
+        do {
+            for chunk in affected.chunked(into: 400) {
+                let batch = database.batch()
+                for album in chunk {
+                    let updatedTags = album.tags.filter {
+                        $0.caseInsensitiveCompare(normalized) != .orderedSame
+                    }
+                    let ref = database.collection("albums").document(album.id)
+                    batch.updateData([
+                        "tags": updatedTags,
+                        "updatedAt": Timestamp(date: Date())
+                    ], forDocument: ref)
+                }
+                try await batch.commit()
+            }
+        } catch {
+            print("[AlbumsViewModel] tag delete error: \(error)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
     @discardableResult
     private func deleteMemories(inAlbumID albumID: String) async throws -> [String] {
         let snapshot = try await database.collection("memories")

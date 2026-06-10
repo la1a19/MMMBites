@@ -362,6 +362,19 @@ class LoginViewModel: ObservableObject {
         }
     }
 
+    func updateCustomTags(_ tags: [String]) async {
+        guard let currentUserID = Auth.auth().currentUser?.uid else { return }
+        do {
+            try await database.collection("users").document(currentUserID).setData(
+                ["customTags": tags],
+                merge: true
+            )
+            currentUser?.customTags = tags
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func updateAvatar(_ data: Data?) async {
         guard let currentUserID = Auth.auth().currentUser?.uid else { return }
 

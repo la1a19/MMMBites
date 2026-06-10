@@ -63,18 +63,20 @@ struct AppBackground: View {
     private var blobColors: (Color, Color, Color, Color) {
         switch variant {
         case .cool:
+            // Honey-led, with a soft peach blob so cool screens echo the warm gradient.
             return (
-                AppColor.bgSky.opacity(0.55),
                 AppColor.bgMint.opacity(0.55),
+                AppColor.bgSky.opacity(0.55),
                 AppColor.bgCream.opacity(0.55),
-                AppColor.bgLilac.opacity(0.45)
+                AppColor.bgBlush.opacity(0.40)
             )
         case .warm:
+            // Peach-led, finished with honey — mirror of the cool variant.
             return (
-                AppColor.bgBlush.opacity(0.6),
+                AppColor.bgBlush.opacity(0.60),
                 AppColor.bgLilac.opacity(0.55),
                 AppColor.bgCream.opacity(0.55),
-                AppColor.bgSky.opacity(0.40)
+                AppColor.bgMint.opacity(0.45)
             )
         }
     }
@@ -82,14 +84,16 @@ struct AppBackground: View {
     private var particleColors: (SKColor, SKColor) {
         switch variant {
         case .cool:
+            // Cream + honey — same family as warm, lighter dusting.
             return (
-                SKColor(red: 195 / 255, green: 236 / 255, blue: 255 / 255, alpha: 1.0),
-                SKColor(red: 247 / 255, green: 235 / 255, blue: 204 / 255, alpha: 1.0)
+                SKColor(red: 255 / 255, green: 244 / 255, blue: 232 / 255, alpha: 1.0),
+                SKColor(red: 246 / 255, green: 209 / 255, blue: 175 / 255, alpha: 1.0)
             )
         case .warm:
+            // Peach + honey — matches the AddAlbumView reference screen.
             return (
-                SKColor(red: 255 / 255, green: 205 / 255, blue: 213 / 255, alpha: 1.0),
-                SKColor(red: 224 / 255, green: 210 / 255, blue: 255 / 255, alpha: 1.0)
+                SKColor(red: 233 / 255, green: 146 / 255, blue: 117 / 255, alpha: 1.0),
+                SKColor(red: 246 / 255, green: 209 / 255, blue: 175 / 255, alpha: 1.0)
             )
         }
     }

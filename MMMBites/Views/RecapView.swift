@@ -104,7 +104,7 @@ struct RecapView: View {
                                                 .frame(width: 56, height: 56)
                                             Image(systemName: "mappin.and.ellipse")
                                                 .font(.clash(22, weight: .bold))
-                                                .foregroundStyle(AppGradient.hero)
+                                                .foregroundStyle(AppGradient.heroText)
                                         }
                                     ),
                                     label: "FAVOURITE SPOT",
@@ -122,7 +122,7 @@ struct RecapView: View {
                                                 .frame(width: 56, height: 56)
                                             Image(systemName: "sparkles")
                                                 .font(.clash(22, weight: .bold))
-                                                .foregroundStyle(AppGradient.hero)
+                                                .foregroundStyle(AppGradient.heroText)
                                         }
                                     ),
                                     label: "MOST MEMORABLE FOR",
@@ -186,10 +186,10 @@ struct RecapView: View {
             Text(heroSubtitle)
                 .font(.clash(11, weight: .semibold))
                 .tracking(1.4)
-                .foregroundStyle(AppGradient.hero)
+                .foregroundStyle(AppGradient.heroText)
             Text("\(filteredMemories.count)")
                 .font(.clash(72, weight: .black))
-                .foregroundStyle(AppGradient.hero)
+                .foregroundStyle(AppGradient.heroText)
             Text(filteredMemories.count == 1 ? "meal memory" : "meal memories")
                 .font(.clash(16, weight: .semibold))
                 .foregroundColor(AppColor.ink)
@@ -221,7 +221,7 @@ struct RecapView: View {
                 Text(label)
                     .font(.clash(10, weight: .semibold))
                     .tracking(1.2)
-                    .foregroundStyle(AppGradient.hero)
+                    .foregroundStyle(AppGradient.heroText)
                 Text(value)
                     .font(.clash(20, weight: .bold))
                     .foregroundColor(AppColor.ink)
@@ -250,11 +250,11 @@ struct RecapView: View {
             HStack(spacing: 4) {
                 Image(systemName: "quote.opening")
                     .font(.clash(11, weight: .bold))
-                    .foregroundStyle(AppGradient.hero)
+                    .foregroundStyle(AppGradient.heroText)
                 Text("BITES THAT STAYED WITH YOU")
                     .font(.clash(10, weight: .semibold))
                     .tracking(1.2)
-                    .foregroundStyle(AppGradient.hero)
+                    .foregroundStyle(AppGradient.heroText)
                 Spacer(minLength: 0)
             }
             .padding(.leading, 4)
@@ -310,7 +310,7 @@ struct RecapView: View {
                     .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
                 Image(systemName: "sparkles")
                     .font(.clash(32, weight: .bold))
-                    .foregroundStyle(AppGradient.hero)
+                    .foregroundStyle(AppGradient.heroText)
             }
             Text("Nothing to recap yet")
                 .font(AppFont.headline)
