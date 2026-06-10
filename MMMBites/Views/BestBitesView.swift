@@ -64,7 +64,7 @@ struct BestBitesView: View {
                     .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
                 Image(systemName: "fork.knife")
                     .font(.clash(28, weight: .bold))
-                    .foregroundStyle(AppGradient.hero)
+                    .foregroundStyle(AppGradient.heroText)
             }
             .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
 

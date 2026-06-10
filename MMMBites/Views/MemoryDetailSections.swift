@@ -104,7 +104,7 @@ struct MemoryHeader: View {
             if heartBurst {
                 Image(systemName: "heart.fill")
                     .font(.clash(96, weight: .bold))
-                    .foregroundStyle(AppGradient.hero)
+                    .foregroundStyle(AppGradient.heroText)
                     .shadow(color: AppColor.primary.opacity(0.3), radius: 12)
                     .transition(.scale.combined(with: .opacity))
             }
@@ -181,7 +181,7 @@ struct MemoryTitleSection: View {
                     if isFavourite {
                         Image(systemName: "heart.fill")
                             .font(.clash(20, weight: .semibold))
-                            .foregroundStyle(AppGradient.hero)
+                            .foregroundStyle(AppGradient.heroText)
                             .scaleEffect(favouriteBurst ? 1.35 : 1)
                             .animation(AppAnimation.bouncy, value: favouriteBurst)
                             .transition(.scale.combined(with: .opacity))
@@ -217,7 +217,7 @@ struct MemoryMoodCard: View {
                     .foregroundColor(AppColor.inkMuted)
                 Text(mood.label)
                     .font(.clash(15, weight: .bold))
-                    .foregroundStyle(AppGradient.hero)
+                    .foregroundStyle(AppGradient.heroText)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 14)
