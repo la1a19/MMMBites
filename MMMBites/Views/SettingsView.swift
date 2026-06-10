@@ -8,6 +8,8 @@
 import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
+import AuthenticationServices
+import CryptoKit
 
 enum AppearanceMode: String, CaseIterable, Identifiable {
     case system, light, dark
@@ -271,12 +273,17 @@ struct SettingsView: View {
         let database = Firestore.firestore()
 
         do {
+            try await revokeAppleTokenIfNeeded(for: user)
+
             // Albums owned by the user (memories under each are unowned-cascade
             // dropped here too).
             let albumsSnap = try await database.collection("albums")
                 .whereField("ownerId", isEqualTo: uid)
                 .getDocuments()
             for doc in albumsSnap.documents {
+                let albumID = doc.documentID
+                await PhotoStorage.deleteAlbumCover(albumID: albumID)
+                LocalPhotoCache.clearAlbumCover(albumID: albumID)
                 try await doc.reference.delete()
             }
 
@@ -286,6 +293,9 @@ struct SettingsView: View {
                 .whereField("capturedById", isEqualTo: uid)
                 .getDocuments()
             for doc in memoriesSnap.documents {
+                let memoryID = doc.documentID
+                await PhotoStorage.deleteMemoryPhotos(memoryID: memoryID)
+                LocalPhotoCache.clearMemoryPhotos(memoryID: memoryID)
                 try await doc.reference.delete()
             }
 
@@ -320,6 +330,22 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private func revokeAppleTokenIfNeeded(for user: FirebaseAuth.User) async throws {
+        let usesAppleSignIn = user.providerData.contains { provider in
+            provider.providerID == "apple.com"
+        }
+        guard usesAppleSignIn else { return }
+
+        let credential = try await AppleAccountDeletionAuthorizer().credential()
+        let firebaseCredential = OAuthProvider.appleCredential(
+            withIDToken: credential.identityToken,
+            rawNonce: credential.rawNonce,
+            fullName: nil
+        )
+        try await user.reauthenticate(with: firebaseCredential)
+        try await Auth.auth().revokeToken(withAuthorizationCode: credential.authorizationCode)
     }
 
     // MARK: - Building blocks
@@ -411,6 +437,108 @@ struct SettingsView: View {
             .padding(.vertical, 12)
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct AppleDeletionCredential {
+    let identityToken: String
+    let authorizationCode: String
+    let rawNonce: String
+}
+
+@MainActor
+private final class AppleAccountDeletionAuthorizer: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
+    private var continuation: CheckedContinuation<AppleDeletionCredential, Error>?
+    private var rawNonce: String?
+
+    func credential() async throws -> AppleDeletionCredential {
+        try await withCheckedThrowingContinuation { continuation in
+            let rawNonce = Self.makeNonce()
+            self.rawNonce = rawNonce
+            self.continuation = continuation
+
+            let request = ASAuthorizationAppleIDProvider().createRequest()
+            request.requestedScopes = []
+            request.nonce = Self.sha256(rawNonce)
+
+            let controller = ASAuthorizationController(authorizationRequests: [request])
+            controller.delegate = self
+            controller.presentationContextProvider = self
+            controller.performRequests()
+        }
+    }
+
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        guard let appleCredential = authorization.credential as? ASAuthorizationAppleIDCredential,
+              let identityTokenData = appleCredential.identityToken,
+              let identityToken = String(data: identityTokenData, encoding: .utf8),
+              let authorizationCodeData = appleCredential.authorizationCode,
+              let authorizationCode = String(data: authorizationCodeData, encoding: .utf8),
+              let rawNonce else {
+            finish(with: AuthError.missingAppleCredential)
+            return
+        }
+
+        finish(with: AppleDeletionCredential(
+            identityToken: identityToken,
+            authorizationCode: authorizationCode,
+            rawNonce: rawNonce
+        ))
+    }
+
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        finish(with: error)
+    }
+
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first { $0.isKeyWindow } ?? ASPresentationAnchor()
+    }
+
+    private func finish(with credential: AppleDeletionCredential) {
+        continuation?.resume(returning: credential)
+        continuation = nil
+        rawNonce = nil
+    }
+
+    private func finish(with error: Error) {
+        continuation?.resume(throwing: error)
+        continuation = nil
+        rawNonce = nil
+    }
+
+    private static func makeNonce(length: Int = 32) -> String {
+        precondition(length > 0)
+        let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._")
+        var remaining = length
+        var result = ""
+
+        while remaining > 0 {
+            var random: UInt8 = 0
+            let status = SecRandomCopyBytes(kSecRandomDefault, 1, &random)
+            if status == errSecSuccess, random < charset.count {
+                result.append(charset[Int(random)])
+                remaining -= 1
+            }
+        }
+
+        return result
+    }
+
+    private static func sha256(_ input: String) -> String {
+        SHA256.hash(data: Data(input.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    private enum AuthError: LocalizedError {
+        case missingAppleCredential
+
+        var errorDescription: String? {
+            "Couldn't read Apple credentials."
+        }
     }
 }
 
