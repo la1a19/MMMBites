@@ -154,9 +154,6 @@ struct AlbumDetailView: View {
 
                         searchField
                             .bounceOnAppear(delay: 0.1)
-
-                        summaryRow
-                            .bounceOnAppear(delay: 0.12)
                     }
 
                     // Memories live on a draggable free-form canvas, so they
@@ -527,14 +524,6 @@ struct AlbumDetailView: View {
         .animation(AppAnimation.snappy, value: searchText)
     }
 
-    private var summaryRow: some View {
-        HStack(spacing: AppSpacing.s) {
-            summaryChip(icon: "photo.stack.fill", title: "\(memories.count)", subtitle: "memories")
-            summaryChip(icon: "heart.fill", title: "\(totalReactionCount)", subtitle: "reactions", tint: AppColor.primary)
-            summaryChip(icon: "person.2.fill", title: "\(participantCount)", subtitle: "people", tint: AppColor.secondary)
-        }
-    }
-
     private func addMemoryButton(compact: Bool) -> some View {
         NavigationLink {
             AddMemoryView(
@@ -565,30 +554,6 @@ struct AlbumDetailView: View {
         .pressableScale()
     }
 
-    // MARK: - Summary chip
-
-    private func summaryChip(icon: String, title: String, subtitle: String, tint: Color = AppColor.accent) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.clash(14, weight: .semibold))
-                .foregroundColor(tint)
-                .frame(width: 30, height: 30)
-                .background(Circle().fill(tint.opacity(0.18)))
-            VStack(alignment: .leading, spacing: 0) {
-                Text(title)
-                    .font(AppFont.captionBold)
-                    .foregroundColor(AppColor.ink)
-                Text(subtitle)
-                    .font(AppFont.tiny)
-                    .foregroundColor(AppColor.inkFaint)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .fieldSurface()
-    }
-
     // MARK: - Memory bubble
 
     // MARK: - Free-form memory canvas
@@ -596,7 +561,6 @@ struct AlbumDetailView: View {
     private var freeformMemoryCanvas: some View {
         GeometryReader { proxy in
             let viewportSize = proxy.size
-            let contentSize = viewportSize
 
             ZStack(alignment: .topLeading) {
                 Color.clear
@@ -607,14 +571,15 @@ struct AlbumDetailView: View {
                         .position(bubblePosition(
                             for: memory,
                             index: index,
-                            contentSize: contentSize
+                            contentSize: viewportSize
                         ))
                         .offset(bubbleOffset(for: memory.id))
                         .zIndex(zIndex(for: memory.id))
                         .bounceOnAppear(delay: 0.12 + Double(index) * 0.035)
                 }
             }
-            .clipped()
+            // No `.clipped()` here — lets dragged bubbles travel beyond the
+            // visible viewport instead of disappearing at the edge.
         }
         .frame(height: bubbleCanvasViewportHeight(for: filteredMemories.count, expanded: isBubbleCanvasExpanded))
         .onChange(of: filteredMemories.map(\.id)) { _, ids in
@@ -676,11 +641,11 @@ struct AlbumDetailView: View {
         .frame(width: bubbleFrameWidth(for: memory.id))
         .modifier(FloatingMotion(
             seed: floatSeed(for: memory.id),
-            isActive: activeBubbleDrag?.id != memory.id
+            isActive: activeBubbleDrag == nil
         ))
         .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 12)
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 4)
                 .updating($activeBubbleDrag) { value, state, _ in
                     state = BubbleDragState(id: memory.id, translation: value.translation)
                 }
@@ -833,22 +798,22 @@ struct AlbumDetailView: View {
     }
 }
 
-// Continuous, organic drift for the memory bubbles. The seed changes phase,
-// speed and amplitude, so nearby bubbles do not move in lockstep.
+// Continuous, organic drift for the memory bubbles. Pauses entirely whenever
+// any bubble is being dragged so the gesture stream doesn't fight a 60fps
+// timeline re-render on every other bubble.
 private struct FloatingMotion: ViewModifier {
     let seed: Double
     var isActive: Bool = true
 
     func body(content: Content) -> some View {
-        TimelineView(.animation) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isActive)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             let xSpeed = 0.42 + (seed.truncatingRemainder(dividingBy: 0.28))
             let ySpeed = 0.34 + (seed.truncatingRemainder(dividingBy: 0.22))
             let xAmplitude = 3.5 + CGFloat(seed.truncatingRemainder(dividingBy: 2.6))
             let yAmplitude = 5.0 + CGFloat(seed.truncatingRemainder(dividingBy: 3.4))
-            let activeScale: CGFloat = isActive ? 1.0 : 0.0
-            let dx = CGFloat(sin(t * xSpeed + seed)) * xAmplitude * activeScale
-            let dy = CGFloat(cos(t * ySpeed + seed * 1.3)) * yAmplitude * activeScale
+            let dx = isActive ? CGFloat(sin(t * xSpeed + seed)) * xAmplitude : 0
+            let dy = isActive ? CGFloat(cos(t * ySpeed + seed * 1.3)) * yAmplitude : 0
             content.offset(x: dx, y: dy)
         }
     }

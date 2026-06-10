@@ -9,6 +9,8 @@ import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
 import Combine
+import AuthenticationServices
+import CryptoKit
 
 @MainActor
 class LoginViewModel: ObservableObject {
@@ -117,6 +119,132 @@ class LoginViewModel: ObservableObject {
             showError = true
         }
     }
+
+    // MARK: - Sign in with Apple
+
+    /// Configure the `ASAuthorizationAppleIDRequest` produced by SignInWithAppleButton.
+    /// Stashes the raw nonce on the VM so `handleAppleSignIn` can use it later.
+    func prepareAppleRequest(_ request: ASAuthorizationAppleIDRequest) {
+        let rawNonce = Self.makeAppleNonce()
+        currentNonce = rawNonce
+        request.requestedScopes = [.fullName, .email]
+        request.nonce = Self.sha256(rawNonce)
+    }
+
+    private static func makeAppleNonce(length: Int = 32) -> String {
+        precondition(length > 0)
+        let charset: [Character] =
+            Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._")
+        var remaining = length
+        var result = ""
+        while remaining > 0 {
+            var random: UInt8 = 0
+            let status = SecRandomCopyBytes(kSecRandomDefault, 1, &random)
+            if status != errSecSuccess { continue }
+            if random < charset.count {
+                result.append(charset[Int(random)])
+                remaining -= 1
+            }
+        }
+        return result
+    }
+
+    private static func sha256(_ input: String) -> String {
+        let inputData = Data(input.utf8)
+        return SHA256.hash(data: inputData)
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    /// Bridge the Apple credential into Firebase. On first sign-in, creates the
+    /// user document so the rest of the app sees a real profile.
+    func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) async {
+        errorMessage = ""
+
+        switch result {
+        case .failure(let error):
+            // User canceling is not an error worth surfacing.
+            if (error as NSError).code == ASAuthorizationError.canceled.rawValue {
+                return
+            }
+            errorMessage = error.localizedDescription
+            showError = true
+
+        case .success(let authorization):
+            guard
+                let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                let rawNonce = currentNonce,
+                let identityTokenData = credential.identityToken,
+                let identityTokenString = String(data: identityTokenData, encoding: .utf8)
+            else {
+                errorMessage = "Couldn't read Apple credentials."
+                showError = true
+                return
+            }
+
+            let firebaseCredential = OAuthProvider.appleCredential(
+                withIDToken: identityTokenString,
+                rawNonce: rawNonce,
+                fullName: credential.fullName
+            )
+
+            do {
+                let authResult = try await Auth.auth().signIn(with: firebaseCredential)
+                await ensureUserDocument(
+                    for: authResult.user,
+                    fullName: credential.fullName,
+                    emailFallback: credential.email
+                )
+            } catch {
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+
+            currentNonce = nil
+        }
+    }
+
+    /// Create the Firestore user doc on first Apple sign-in (no-op if already
+    /// present). Apple only returns the full name on the very first call, so we
+    /// pick the best guess from what is available.
+    private func ensureUserDocument(
+        for user: FirebaseAuth.User,
+        fullName: PersonNameComponents?,
+        emailFallback: String?
+    ) async {
+        let docRef = database.collection("users").document(user.uid)
+        do {
+            let snapshot = try await docRef.getDocument()
+            if snapshot.exists { return }
+
+            let formatter = PersonNameComponentsFormatter()
+            let derivedName = fullName.map { formatter.string(from: $0) } ?? ""
+            let username: String
+            if !derivedName.trimmingCharacters(in: .whitespaces).isEmpty {
+                username = derivedName
+            } else if let email = user.email ?? emailFallback,
+                      let local = email.split(separator: "@").first {
+                username = String(local)
+            } else {
+                username = "User-\(user.uid.prefix(4))"
+            }
+
+            let newUser = User(
+                id: user.uid,
+                username: username,
+                email: user.email ?? emailFallback,
+                friendIDs: [],
+                customTags: []
+            )
+            try docRef.setData(from: newUser)
+        } catch {
+            // Document creation failure shouldn't block sign-in; user can edit
+            // their profile later.
+            print("[LoginViewModel] failed to create user doc: \(error)")
+        }
+    }
+
+    private var currentNonce: String?
 
     func forgotPassword(email: String) async {
         errorMessage = ""

@@ -23,12 +23,22 @@ struct WelcomeView: View {
                     Spacer()
 
                     // Wordmark
-                    Text("MMMBITES")
-                        .font(.clash(32, weight: .medium))
-                        .foregroundColor(.black)
-                        .tracking(2)
-                        .scaleEffect(animateLogo ? 1.0 : 0.92)
-                        .opacity(animateLogo ? 1 : 0)
+                    VStack(spacing: 14) {
+                        Text("MMMBITES")
+                            .font(.clash(52, weight: .bold))
+                            .tracking(4)
+                            .foregroundStyle(AppGradient.heroText)
+                            .shadow(color: .white.opacity(0.55), radius: 14, y: 2)
+                            .scaleEffect(animateLogo ? 1.0 : 0.92)
+                            .opacity(animateLogo ? 1 : 0)
+
+                        Text("your meals, remembered")
+                            .font(.clash(14, weight: .regular))
+                            .italic()
+                            .tracking(0.6)
+                            .foregroundColor(AppColor.inkMuted)
+                            .opacity(animateLogo ? 0.95 : 0)
+                    }
 
                     Spacer()
 
