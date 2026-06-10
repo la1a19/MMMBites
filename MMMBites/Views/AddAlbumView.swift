@@ -129,12 +129,11 @@ struct AddAlbumView: View {
     private var albumNameField: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("ALBUM NAME")
-                .font(AppFont.tiny)
+                .font(AppFont.captionBold)
                 .foregroundColor(AppColor.inkMuted)
                 .padding(.leading, 6)
             TextField("Enter album name", text: $title)
-                .font(.clash(22, weight: .bold))
-                .multilineTextAlignment(.center)
+                .font(AppFont.body)
                 .autocorrectionDisabled(true)
                 .textInputAutocapitalization(.characters)
                 .onChange(of: title) { _, newValue in
@@ -156,12 +155,16 @@ struct AddAlbumView: View {
     }
 
     private var locationField: some View {
-        VStack(spacing: AppSpacing.s) {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("LOCATION")
+                .font(AppFont.captionBold)
+                .foregroundColor(AppColor.inkMuted)
+                .padding(.leading, 6)
             HStack(spacing: 6) {
                 Image(systemName: "mappin.and.ellipse")
                     .foregroundColor(AppColor.primary)
-                TextField("Location", text: $location)
-                    .font(AppFont.subheadline)
+                TextField("Add a place", text: $location)
+                    .font(AppFont.body)
                     .focused($isLocationFocused)
                     .autocorrectionDisabled(true)
                     .textInputAutocapitalization(.words)
@@ -403,7 +406,7 @@ struct AddAlbumView: View {
     private var descriptionField: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("DESCRIPTION")
-                .font(AppFont.tiny)
+                .font(AppFont.captionBold)
                 .foregroundColor(AppColor.inkMuted)
                 .padding(.leading, 6)
 
@@ -411,6 +414,7 @@ struct AddAlbumView: View {
                 if description.isEmpty {
                     Text("Add a short note about this album")
                         .font(AppFont.body)
+                        .opacity(0.5)
                         .foregroundColor(AppColor.inkFaint)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 15)

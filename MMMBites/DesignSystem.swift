@@ -102,20 +102,33 @@ enum AppGradient {
 // SwiftUI automatically falls back to the system font.
 //
 // Expected PostScript names:
-//   Pally-Regular, Pally-Medium, Pally-Bold
+//   Pally-Regular, Pally-Medium, Pally-Bold   (display, >= 18pt)
+//   ClashGrotesk-*                            (body, < 18pt)
 
 extension Font {
     static func clash(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        Font.custom(clashPostScriptName(for: weight), size: size)
+        Font.custom(clashPostScriptName(for: weight, size: size), size: size)
     }
 
-    private static func clashPostScriptName(for weight: Font.Weight) -> String {
-        switch weight {
-        case .ultraLight, .thin, .light: return "Pally-Regular"
-        case .regular:                   return "Pally-Regular"
-        case .medium, .semibold:         return "Pally-Medium"
-        case .bold, .heavy, .black:      return "Pally-Bold"
-        default:                         return "Pally-Regular"
+    private static func clashPostScriptName(for weight: Font.Weight, size: CGFloat) -> String {
+        if size < 18 {
+            switch weight {
+            case .ultraLight, .thin:        return "ClashGrotesk-Extralight"
+            case .light:                    return "ClashGrotesk-Light"
+            case .regular:                  return "ClashGrotesk-Regular"
+            case .medium:                   return "ClashGrotesk-Medium"
+            case .semibold:                 return "ClashGrotesk-Semibold"
+            case .bold, .heavy, .black:     return "ClashGrotesk-Bold"
+            default:                        return "ClashGrotesk-Regular"
+            }
+        } else {
+            switch weight {
+            case .ultraLight, .thin, .light: return "Pally-Regular"
+            case .regular:                   return "Pally-Regular"
+            case .medium, .semibold:         return "Pally-Medium"
+            case .bold, .heavy, .black:      return "Pally-Bold"
+            default:                         return "Pally-Regular"
+            }
         }
     }
 }
