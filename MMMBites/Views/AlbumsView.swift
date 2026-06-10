@@ -12,8 +12,6 @@ struct AlbumsView: View {
     @StateObject private var viewModel = AlbumsViewModel()
 
     @State private var searchText = ""
-    @State private var showFilters = false
-    @State private var selectedTags: Set<String> = []
     @State private var showAddAlbum = false
     @State private var currentPage = 0
     @State private var showGridView = false
@@ -25,18 +23,10 @@ struct AlbumsView: View {
     @State private var showMemoryMap = false
     @State private var profilePhotoData: Data?
 
-    // Album-level categories shown when the filter panel is open.
-    private let filterOptions = AlbumTagDefaults.filters
-
-    // Albums after applying selected tag filters + search text
+    // Albums after applying search text
     private var filteredAlbums: [Album] {
         viewModel.albums.filter { album in
-            let matchesTags = selectedTags.isEmpty ||
-                !selectedTags.isDisjoint(with: Set(album.tags.map { $0.capitalized }))
-
-            let matchesSearch = searchText.isEmpty || albumMatchesSearch(album)
-
-            return matchesTags && matchesSearch
+            searchText.isEmpty || albumMatchesSearch(album)
         }
     }
 
@@ -78,10 +68,6 @@ struct AlbumsView: View {
                         searchRow
                             .bounceOnAppear(delay: 0.1)
 
-                        if showFilters {
-                            filterPills
-                                .transition(.move(edge: .top).combined(with: .opacity))
-                        }
 
                         if let throwback = throwbackMemory {
                             throwbackCard(throwback)
@@ -202,9 +188,9 @@ struct AlbumsView: View {
     private var backgroundGradient: some View {
         LinearGradient(
             colors: [
-                Color(red: 0.78, green: 0.90, blue: 0.88),
-                Color(red: 0.96, green: 0.93, blue: 0.80),
-                Color(red: 0.80, green: 0.90, blue: 0.96)
+                AppColor.background,
+                AppColor.secondary,
+                AppColor.primary.opacity(0.65)
             ],
             startPoint: .top,
             endPoint: .bottom
@@ -318,46 +304,6 @@ struct AlbumsView: View {
         }
     }
 
-    // MARK: - Filter pills
-
-    private var filterPills: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-            ForEach(filterOptions, id: \.self) { tag in
-                Button {
-                    Haptics.selection()
-                    withAnimation(AppAnimation.snappy) { toggleTag(tag) }
-                } label: {
-                    HStack {
-                        Text(tag)
-                            .fontWeight(.semibold)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                        if selectedTags.contains(tag) {
-                            Spacer()
-                            Image(systemName: "xmark")
-                                .font(.clash(13, weight: .bold))
-                        }
-                    }
-                    .font(AppFont.subheadline)
-                    .foregroundColor(selectedTags.contains(tag) ? .white : AppColor.ink)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(
-                        Capsule().fill(
-                            selectedTags.contains(tag)
-                            ? AppColor.tag(tag)
-                            : Color.white.opacity(0.7)
-                        )
-                    )
-                    .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
-                    .shadow(color: .black.opacity(0.06), radius: 6, y: 3)
-                }
-                .buttonStyle(.plain)
-                .pressableScale(0.94)
-            }
-        }
-    }
-
     // MARK: - Title
 
     private var titleRow: some View {
@@ -365,7 +311,7 @@ struct AlbumsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Albums")
                     .font(AppFont.display)
-                    .foregroundStyle(AppGradient.hero)
+                    .foregroundStyle(AppGradient.heroText)
                 Text("\(viewModel.albums.count) albums · \(viewModel.memoryCount) memories")
                     .font(AppFont.caption)
                     .foregroundColor(AppColor.inkMuted)
@@ -424,13 +370,13 @@ struct AlbumsView: View {
 
             Button {
                 Haptics.tap()
-                withAnimation(AppAnimation.snappy) { showFilters.toggle() }
+                showMemorySearch = true
             } label: {
                 Image(systemName: "slider.horizontal.3")
                     .font(.clash(14, weight: .semibold))
-                    .foregroundColor(showFilters ? .white : AppColor.ink)
+                    .foregroundColor(AppColor.ink)
                     .frame(width: 40, height: 40)
-                    .background(Circle().fill(showFilters ? AppColor.primary : AppColor.surface.opacity(0.88)))
+                    .background(Circle().fill(AppColor.surface.opacity(0.88)))
                     .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
             }
             .buttonStyle(.plain)
@@ -722,15 +668,15 @@ struct AlbumsView: View {
 
     private var emptyState: some View {
         VStack(spacing: AppSpacing.m) {
-            Image(systemName: viewModel.albums.isEmpty ? "rectangle.stack.badge.plus" : "line.3.horizontal.decrease.circle")
+            Image(systemName: viewModel.albums.isEmpty ? "rectangle.stack.badge.plus" : "magnifyingglass")
                 .font(.clash(42, weight: .light))
                 .foregroundColor(AppColor.inkFaint)
                 .frame(width: 92, height: 92)
                 .background(AppGradient.glass, in: Circle())
-            Text(viewModel.albums.isEmpty ? "Create your first album" : "No albums match your filters")
+            Text(viewModel.albums.isEmpty ? "Create your first album" : "No albums match your search")
                 .font(AppFont.headline)
                 .foregroundColor(AppColor.inkMuted)
-            Text(viewModel.albums.isEmpty ? "Start with a place, trip, or food theme." : "Try clearing tags or a different search.")
+            Text(viewModel.albums.isEmpty ? "Start with a place, trip, or food theme." : "Try a different search.")
                 .font(AppFont.caption)
                 .foregroundColor(AppColor.inkFaint)
             Button {
@@ -738,13 +684,12 @@ struct AlbumsView: View {
                     showAddAlbum = true
                 } else {
                     withAnimation(AppAnimation.snappy) {
-                        selectedTags.removeAll()
                         searchText = ""
                     }
                 }
                 Haptics.tap()
             } label: {
-                Text(viewModel.albums.isEmpty ? "New Album" : "Reset filters")
+                Text(viewModel.albums.isEmpty ? "New Album" : "Clear search")
                     .font(AppFont.captionBold)
                     .foregroundColor(.white)
                     .padding(.horizontal, 16)
@@ -813,13 +758,13 @@ struct AlbumsView: View {
                         .frame(width: 34, height: 34)
                     Image(systemName: icon)
                         .font(.clash(13, weight: .bold))
-                        .foregroundStyle(AppGradient.hero)
+                        .foregroundStyle(AppGradient.heroText)
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(label)
                         .font(.clash(9, weight: .semibold))
                         .tracking(1.1)
-                        .foregroundStyle(AppGradient.hero)
+                        .foregroundStyle(AppGradient.heroText)
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text(value)
                             .font(.clash(16, weight: .bold))
@@ -854,45 +799,25 @@ struct AlbumsView: View {
         let startOfToday = calendar.startOfDay(for: today)
         let todayComp = calendar.dateComponents([.month, .day], from: today)
 
-        // Primary: same month + day, but a past year ("On this day, 1 year ago")
-        let onThisDay = viewModel.memories.filter { memory in
-            let comp = calendar.dateComponents([.month, .day], from: memory.date)
-            return memory.date < startOfToday
-                && comp.month == todayComp.month
-                && comp.day == todayComp.day
-        }
-        if let match = onThisDay.sorted(by: { $0.date > $1.date }).first {
-            return match
-        }
-
-        // Fallback: any memory older than 30 days ("Throwback")
-        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: today) ?? today
+        // Only memories from a past year that share today's month + day.
+        // No fallback — if nothing matches today, no throwback card is shown.
         return viewModel.memories
-            .filter { $0.date < thirtyDaysAgo }
-            .randomElement()
+            .filter { memory in
+                let comp = calendar.dateComponents([.month, .day], from: memory.date)
+                return memory.date < startOfToday
+                    && comp.month == todayComp.month
+                    && comp.day == todayComp.day
+            }
+            .sorted { $0.date > $1.date }
+            .first
     }
 
     private func throwbackLabel(for memory: Memory) -> String {
         let calendar = Calendar.current
-        let now = Date()
-        let comp = calendar.dateComponents([.year, .month, .day], from: now)
-        let memComp = calendar.dateComponents([.year, .month, .day], from: memory.date)
-
-        let isOnThisDay = comp.month == memComp.month && comp.day == memComp.day
-        let years = max(0, (comp.year ?? 0) - (memComp.year ?? 0))
-
-        if isOnThisDay && years >= 1 {
-            return "ON THIS DAY · \(years) YEAR\(years == 1 ? "" : "S") AGO"
-        }
-
-        let months = calendar.dateComponents([.month], from: memory.date, to: now).month ?? 0
-        if years >= 1 {
-            return "THROWBACK · \(years) YEAR\(years == 1 ? "" : "S") AGO"
-        }
-        if months >= 1 {
-            return "THROWBACK · \(months) MONTH\(months == 1 ? "" : "S") AGO"
-        }
-        return "THROWBACK"
+        let nowYear = calendar.component(.year, from: Date())
+        let memYear = calendar.component(.year, from: memory.date)
+        let years = max(1, nowYear - memYear)
+        return "ON THIS DAY · \(years) YEAR\(years == 1 ? "" : "S") AGO"
     }
 
     private func album(forMemory memory: Memory) -> Album? {
@@ -922,7 +847,7 @@ struct AlbumsView: View {
                     Text(throwbackLabel(for: memory))
                         .font(.clash(10, weight: .semibold))
                         .tracking(1.1)
-                        .foregroundStyle(AppGradient.hero)
+                        .foregroundStyle(AppGradient.heroText)
                         .lineLimit(1)
 
                     Text(memory.title)
@@ -966,14 +891,6 @@ struct AlbumsView: View {
     }
 
     // MARK: - Helpers
-
-    private func toggleTag(_ tag: String) {
-        if selectedTags.contains(tag) {
-            selectedTags.remove(tag)
-        } else {
-            selectedTags.insert(tag)
-        }
-    }
 
     private func albumMatchesSearch(_ album: Album) -> Bool {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
