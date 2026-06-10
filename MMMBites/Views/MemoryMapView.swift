@@ -99,7 +99,7 @@ struct MemoryMapView: View {
             } else {
                 Image(systemName: "fork.knife")
                     .font(.clash(isSelected ? 18 : 14, weight: .bold))
-                    .foregroundStyle(AppGradient.hero)
+                    .foregroundStyle(AppGradient.heroText)
             }
         }
         .scaleEffect(isSelected ? 1 : 1)
@@ -184,7 +184,7 @@ struct MemoryMapView: View {
                     .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
                 Image(systemName: "map.fill")
                     .font(.clash(34, weight: .bold))
-                    .foregroundStyle(AppGradient.hero)
+                    .foregroundStyle(AppGradient.heroText)
             }
 
             Text("No mapped memories yet")

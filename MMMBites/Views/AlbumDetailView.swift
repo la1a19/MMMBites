@@ -307,7 +307,7 @@ struct AlbumDetailView: View {
         } else {
             Text(album.title)
                 .font(AppFont.displayLarge)
-                .foregroundStyle(AppGradient.hero)
+                .foregroundStyle(AppGradient.heroText)
         }
     }
 
@@ -435,7 +435,7 @@ struct AlbumDetailView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(album.title)
                     .font(AppFont.headline)
-                    .foregroundStyle(AppGradient.hero)
+                    .foregroundStyle(AppGradient.heroText)
                     .lineLimit(1)
                 Text("\(memories.count) memories")
                     .font(AppFont.tiny)
