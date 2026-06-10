@@ -12,6 +12,13 @@ import MapKit
 import FirebaseAuth
 import FirebaseFirestore
 
+private enum MemoryFieldLimits {
+    static let title = 50
+    static let bestBite = 80
+    static let note = 400
+    static let tag = 20
+}
+
 struct AddMemoryView: View {
     let album: Album
     let memoryToEdit: Memory?
@@ -83,11 +90,14 @@ struct AddMemoryView: View {
             ScrollView {
                 VStack(spacing: AppSpacing.xl) {
 
-                    titleField
+                    groupHeader("THE BASICS", subtitle: "What, when, and where")
                         .bounceOnAppear()
 
+                    titleField
+                        .bounceOnAppear(delay: 0.02)
+
                     photosField
-                        .bounceOnAppear(delay: 0.03)
+                        .bounceOnAppear(delay: 0.04)
 
                     VStack(alignment: .leading, spacing: AppSpacing.m) {
                         HStack(alignment: .top, spacing: AppSpacing.m) {
@@ -106,31 +116,35 @@ struct AddMemoryView: View {
                         }
                     }
                     .animation(AppAnimation.snappy, value: locationSuggestionMemory?.id)
-                    .bounceOnAppear(delay: 0.05)
+                    .bounceOnAppear(delay: 0.06)
 
-                    moodSection
+                    groupHeader("THE STORY", subtitle: "What made it stick with you")
+                        .padding(.top, AppSpacing.s)
                         .bounceOnAppear(delay: 0.08)
 
-                    bestBiteSection
+                    moodSection
                         .bounceOnAppear(delay: 0.1)
 
-                    memorableSection
+                    bestBiteSection
                         .bounceOnAppear(delay: 0.12)
 
-                    peopleSection
+                    memorableSection
                         .bounceOnAppear(delay: 0.14)
 
-                    optionalDetailsToggle
+                    peopleSection
                         .bounceOnAppear(delay: 0.16)
+
+                    optionalDetailsToggle
+                        .bounceOnAppear(delay: 0.18)
 
                     if showOptionalDetails {
                         noteSection
                             .transition(.opacity.combined(with: .move(edge: .top)))
-                            .bounceOnAppear(delay: 0.18)
+                            .bounceOnAppear(delay: 0.2)
                     }
 
                     PrimaryButton(
-                        title: isEditing ? "Save changes" : "Save meal memory",
+                        title: isEditing ? "Save changes" : "Save Memory",
                         icon: isEditing ? "checkmark" : "sparkles"
                     ) {
                         save()
@@ -271,7 +285,7 @@ struct AddMemoryView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "camera.fill")
                             .font(.clash(15, weight: .semibold))
-                        Text("Pick a few photos or snap one right now")
+                        Text("Add a few photos, or take one now")
                             .font(.clash(12, weight: .semibold))
                     }
                     .foregroundColor(AppColor.inkMuted)
@@ -389,14 +403,24 @@ struct AddMemoryView: View {
 
     private var titleField: some View {
         VStack(alignment: .leading, spacing: 6) {
-            sectionLabel("WHAT TO CALL THIS MEMORY")
+            HStack(alignment: .firstTextBaseline) {
+                sectionLabel("WHAT TO CALL THIS MEMORY")
+                Spacer()
+                counterLabel(count: title.count, limit: MemoryFieldLimits.title)
+            }
             TextField("e.g. Sunday roast with the girls", text: $title)
                 .font(.clash(20, weight: .semibold))
                 .multilineTextAlignment(.center)
                 .autocorrectionDisabled(true)
+                .textContentType(nil)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
                 .fieldSurface()
+                .onChange(of: title) { _, newValue in
+                    if newValue.count > MemoryFieldLimits.title {
+                        title = String(newValue.prefix(MemoryFieldLimits.title))
+                    }
+                }
         }
     }
 
@@ -423,7 +447,7 @@ struct AddMemoryView: View {
                     Text(showOptionalDetails ? "Hide note" : "Add a note")
                         .font(AppFont.headline)
                         .foregroundColor(AppColor.ink)
-                    Text("Anything else worth keeping in your own words")
+                    Text("Anything else you want to remember")
                         .font(AppFont.caption)
                         .foregroundColor(AppColor.inkMuted)
                         .lineLimit(1)
@@ -543,11 +567,11 @@ struct AddMemoryView: View {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
                     .font(.clash(11, weight: .bold))
-                    .foregroundStyle(AppGradient.hero)
+                    .foregroundStyle(AppGradient.heroText)
                 Text("YOU'VE BEEN HERE BEFORE")
                     .font(.clash(10, weight: .semibold))
                     .tracking(1.2)
-                    .foregroundStyle(AppGradient.hero)
+                    .foregroundStyle(AppGradient.heroText)
                 Spacer(minLength: 0)
             }
 
@@ -815,10 +839,16 @@ struct AddMemoryView: View {
             TextField("Add", text: $memorableTagSearchText)
                 .font(AppFont.caption)
                 .autocorrectionDisabled(true)
+                .textContentType(nil)
                 .textInputAutocapitalization(.words)
                 .lineLimit(1)
                 .frame(width: 80)
                 .onSubmit { addMemorableFromSearch() }
+                .onChange(of: memorableTagSearchText) { _, newValue in
+                    if newValue.count > MemoryFieldLimits.tag {
+                        memorableTagSearchText = String(newValue.prefix(MemoryFieldLimits.tag))
+                    }
+                }
 
             Button {
                 addMemorableFromSearch()
@@ -843,7 +873,7 @@ struct AddMemoryView: View {
     private var memorableEmptyRow: some View {
         HStack(spacing: 6) {
             Image(systemName: "sparkles")
-            Text("Pick a few — or add your own above")
+            Text("Pick a few, or add your own")
         }
         .font(AppFont.caption)
         .foregroundColor(AppColor.inkFaint)
@@ -942,13 +972,23 @@ struct AddMemoryView: View {
 
     private var bestBiteSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            sectionLabel("THE BEST BITE")
+            HStack(alignment: .firstTextBaseline) {
+                sectionLabel("THE BEST BITE")
+                Spacer()
+                counterLabel(count: bestBite.count, limit: MemoryFieldLimits.bestBite)
+            }
             HStack(spacing: 8) {
                 Image(systemName: "fork.knife")
                     .foregroundColor(AppColor.accent)
                 TextField("What was the bite you'd want to taste again?", text: $bestBite)
                     .font(.clash(15))
                     .autocorrectionDisabled(true)
+                    .textContentType(nil)
+                    .onChange(of: bestBite) { _, newValue in
+                        if newValue.count > MemoryFieldLimits.bestBite {
+                            bestBite = String(newValue.prefix(MemoryFieldLimits.bestBite))
+                        }
+                    }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
@@ -960,44 +1000,37 @@ struct AddMemoryView: View {
 
     private var peopleSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                sectionLabel("WHO WAS THERE?")
-                Spacer()
+            sectionLabel("WHO WAS THERE?")
+
+            if participants.isEmpty {
                 Button {
                     Haptics.tap()
                     showFriendPicker = true
                 } label: {
-                    Image(systemName: "plus")
-                        .font(.clash(13, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 28, height: 28)
-                        .background(Circle().fill(AppGradient.hero))
-                        .shadow(color: AppColor.primary.opacity(0.4), radius: 4, y: 2)
+                    HStack(spacing: 8) {
+                        Image(systemName: "person.2")
+                            .font(.clash(15, weight: .semibold))
+                        Text("Tap to add who you were with")
+                            .font(.clash(12, weight: .semibold))
+                    }
+                    .foregroundColor(AppColor.inkMuted)
+                    .padding(.vertical, 22)
+                    .padding(.horizontal, 16)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.white.opacity(0.52), in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
+                            .strokeBorder(
+                                AppColor.primary.opacity(0.42),
+                                style: StrokeStyle(lineWidth: 1.4, dash: [4, 4])
+                            )
+                    )
                 }
                 .buttonStyle(.plain)
-                .pressableScale(0.9)
-            }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: AppSpacing.m) {
-                    if participants.isEmpty {
-                        HStack(spacing: 6) {
-                            Image(systemName: "person.2")
-                            Text("Tap + to tag the people you were with")
-                        }
-                        .font(.clash(12, weight: .medium))
-                        .foregroundColor(AppColor.inkFaint)
-                        .padding(.vertical, 18)
-                        .padding(.horizontal, 16)
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
-                                .strokeBorder(
-                                    AppColor.inkFaint.opacity(0.4),
-                                    style: StrokeStyle(lineWidth: 1.2, dash: [4, 4])
-                                )
-                        )
-                    } else {
+                .pressableScale(0.98)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: AppSpacing.m) {
                         ForEach(participants, id: \.self) { friendID in
                             VStack(spacing: 6) {
                                 ZStack(alignment: .topTrailing) {
@@ -1029,6 +1062,30 @@ struct AddMemoryView: View {
                             }
                             .transition(.scale.combined(with: .opacity))
                         }
+
+                        Button {
+                            Haptics.tap()
+                            showFriendPicker = true
+                        } label: {
+                            VStack(spacing: 7) {
+                                Image(systemName: "person.badge.plus")
+                                    .font(.clash(18, weight: .semibold))
+                                Text("Add")
+                                    .font(AppFont.tiny)
+                            }
+                            .foregroundColor(AppColor.inkMuted)
+                            .frame(width: 64, height: 84)
+                            .background(Color.white.opacity(0.54), in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
+                                    .strokeBorder(
+                                        AppColor.primary.opacity(0.42),
+                                        style: StrokeStyle(lineWidth: 1.3, dash: [4, 4])
+                                    )
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .pressableScale(0.96)
                     }
                 }
             }
@@ -1040,7 +1097,11 @@ struct AddMemoryView: View {
 
     private var noteSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            sectionLabel("A SHORT NOTE")
+            HStack(alignment: .firstTextBaseline) {
+                sectionLabel("A SHORT NOTE")
+                Spacer()
+                counterLabel(count: note.count, limit: MemoryFieldLimits.note)
+            }
             ZStack(alignment: .topLeading) {
                 if note.isEmpty {
                     Text("How did it taste? What stayed with you?")
@@ -1053,9 +1114,16 @@ struct AddMemoryView: View {
                 TextEditor(text: $note)
                     .font(.clash(15))
                     .scrollContentBackground(.hidden)
+                    .autocorrectionDisabled(true)
+                    .textContentType(nil)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 10)
                     .frame(minHeight: 120)
+                    .onChange(of: note) { _, newValue in
+                        if newValue.count > MemoryFieldLimits.note {
+                            note = String(newValue.prefix(MemoryFieldLimits.note))
+                        }
+                    }
             }
             .fieldSurface()
         }
@@ -1069,6 +1137,38 @@ struct AddMemoryView: View {
             .tracking(1.2)
             .foregroundColor(AppColor.inkMuted)
             .padding(.leading, 4)
+    }
+
+    @ViewBuilder
+    private func counterLabel(count: Int, limit: Int) -> some View {
+        // Only show the counter once the user is approaching the limit,
+        // otherwise it's visual noise.
+        let threshold = max(1, limit - 10)
+        if count >= threshold {
+            Text("\(count)/\(limit)")
+                .font(.clash(10, weight: .semibold))
+                .foregroundColor(count >= limit ? AppColor.primary : AppColor.inkMuted)
+                .padding(.trailing, 4)
+        }
+    }
+
+    private func groupHeader(_ title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 10) {
+                Text(title)
+                    .font(.clash(13, weight: .bold))
+                    .tracking(1.6)
+                    .foregroundStyle(AppGradient.heroText)
+                Rectangle()
+                    .fill(AppColor.primary.opacity(0.25))
+                    .frame(height: 1)
+            }
+            Text(subtitle)
+                .font(AppFont.caption)
+                .foregroundColor(AppColor.inkMuted)
+                .padding(.leading, 2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func save() {

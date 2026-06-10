@@ -89,7 +89,7 @@ struct ProfileView: View {
                         VStack(spacing: AppSpacing.s) {
                             HStack(spacing: 6) {
                                 Image(systemName: "checkmark.seal.fill")
-                                    .foregroundStyle(AppGradient.hero)
+                                    .foregroundStyle(AppGradient.heroText)
                                 Text("Logged in as")
                                     .foregroundColor(AppColor.inkMuted)
                                 Text(username)
@@ -109,7 +109,7 @@ struct ProfileView: View {
                                     .foregroundColor(AppColor.inkMuted)
                                 Text("\(memoryCount)")
                                     .font(.clash(22, weight: .bold))
-                                    .foregroundStyle(AppGradient.hero)
+                                    .foregroundStyle(AppGradient.heroText)
                                 Text(memoryCount == 1 ? "memory" : "memories")
                                     .foregroundColor(AppColor.inkMuted)
                             }
@@ -415,10 +415,10 @@ struct ProfileView: View {
                 HStack(spacing: 6) {
                     Text("See your full recap")
                         .font(.clash(12, weight: .semibold))
-                        .foregroundStyle(AppGradient.hero)
+                        .foregroundStyle(AppGradient.heroText)
                     Image(systemName: "arrow.right")
                         .font(.clash(11, weight: .bold))
-                        .foregroundStyle(AppGradient.hero)
+                        .foregroundStyle(AppGradient.heroText)
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
@@ -1028,7 +1028,7 @@ private struct ComingSoonSheet: View {
                             .frame(width: 96, height: 96)
                         Image(systemName: icon)
                             .font(.clash(34, weight: .semibold))
-                            .foregroundStyle(AppGradient.hero)
+                            .foregroundStyle(AppGradient.heroText)
                     }
 
                     VStack(spacing: AppSpacing.s) {
