@@ -105,9 +105,10 @@ struct LoginView: View {
                             RoundedRectangle(cornerRadius: 18)
                                 .fill(
                                     Color(
-                                        red: 0.10,
-                                        green: 0.16,
-                                        blue: 0.42
+                                        red: 236/255,
+                                        green: 161/255,
+                                        blue: 149/255
+                                        //236, 161, 149
                                     )
                                 )
 
@@ -143,9 +144,10 @@ struct LoginView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(
                     Color(
-                        red: 0.84,
-                        green: 0.90,
-                        blue: 0.97
+                        red: 248/255,
+                        green: 212/255,
+                        blue: 209/255
+                        //248, 212, 209
                     )
                 )
                 .clipShape(

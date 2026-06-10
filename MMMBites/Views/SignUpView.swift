@@ -78,7 +78,11 @@ struct SignUpView: View {
                     }
                 }
                 .background(
-                    Color.white.opacity(0.45) // Translucent light card background
+                    Color(red:248/255, green: 212/255, blue:209/255 ) // Translucent light card background
+                    // red: 248/255,
+                  //  green: 212/255,
+                  //  blue: 209/255
+                    
                         .clipShape(UnevenRoundedRectangle(
                             bottomLeadingRadius: 40,
                             bottomTrailingRadius: 40
@@ -119,7 +123,11 @@ struct SignUpView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
-                    .background(Color(red: 0.10, green: 0.16, blue: 0.42)) // Your exact color requirements
+                    .background(Color(red: 236/255, green: 161/255, blue: 161/255))
+                    //red: 236/255,
+                    //green: 161/255,
+                  //  blue: 161/255
+                    // Your exact color requirements
                     .cornerRadius(22)
                     .padding(.horizontal, 32)
                     .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 4)
