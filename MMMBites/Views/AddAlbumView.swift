@@ -37,13 +37,18 @@ struct AddAlbumView: View {
     @State private var friendUsers: [User] = []
     @State private var isLoadingFriends = false
 
-    private let existingTagOptions = AlbumTagDefaults.all
+    let existingTags: [String]
 
     // Whether we are editing (affects title text, save behaviour)
     private var isEditing: Bool { albumToEdit != nil }
 
-    init(albumToEdit: Album? = nil, onSave: @escaping (Album) -> Void = { _ in }) {
+    init(
+        albumToEdit: Album? = nil,
+        existingTags: [String] = [],
+        onSave: @escaping (Album) -> Void = { _ in }
+    ) {
         self.albumToEdit = albumToEdit
+        self.existingTags = existingTags
         self.onSave = onSave
         // Pre-fill the form if editing, otherwise start empty
         _title = State(initialValue: albumToEdit?.title.uppercased() ?? "")
@@ -238,7 +243,7 @@ struct AddAlbumView: View {
                 }
             }
 
-            suggestedTags
+            existingTagsView
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -564,22 +569,22 @@ struct AddAlbumView: View {
         .transition(.scale.combined(with: .opacity))
     }
 
-    private var suggestedTags: some View {
-        let options = existingTagOptions.filter { option in
+    private var existingTagsView: some View {
+        let options = existingTags.filter { option in
             !tags.contains { $0.caseInsensitiveCompare(option) == .orderedSame }
         }
 
         return VStack(alignment: .leading, spacing: 8) {
             if !options.isEmpty {
-                Text("SUGGESTED ALBUM TAGS")
-                    .font(AppFont.tiny)
+                Text("EXISTING TAGS")
+                    .font(AppFont.captionBold)
                     .foregroundColor(AppColor.inkMuted)
                     .padding(.leading, 4)
 
                 FlowLayout(spacing: 8) {
                     ForEach(options, id: \.self) { tag in
                         Button {
-                            addSuggestedTag(tag)
+                            addExistingTag(tag)
                         } label: {
                             Text(tag)
                                 .font(AppFont.captionBold)
@@ -599,8 +604,12 @@ struct AddAlbumView: View {
     }
 
     private func addTagFromSearch() {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !tags.contains(trimmed) else { return }
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines).capitalized
+        guard !trimmed.isEmpty else { return }
+        guard !tags.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) else {
+            searchText = ""
+            return
+        }
         withAnimation(AppAnimation.bouncy) {
             tags.append(trimmed)
         }
@@ -608,7 +617,7 @@ struct AddAlbumView: View {
         Haptics.success()
     }
 
-    private func addSuggestedTag(_ tag: String) {
+    private func addExistingTag(_ tag: String) {
         guard !tags.contains(where: { $0.caseInsensitiveCompare(tag) == .orderedSame }) else { return }
         withAnimation(AppAnimation.bouncy) {
             tags.append(tag)

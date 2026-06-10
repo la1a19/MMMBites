@@ -64,22 +64,6 @@ struct Album: Identifiable, Codable, Hashable {
 }
 
 enum AlbumTagDefaults {
-    static let filters = ["Cafe", "Dinner", "Brunch", "Dessert", "Korean", "Birthday"]
-
-    static let all = [
-        "Cafe",
-        "Dinner",
-        "Brunch",
-        "Dessert",
-        "Korean",
-        "Japanese",
-        "Italian",
-        "Home Cooking",
-        "Picnic",
-        "Outdoor",
-        "Birthday",
-        "Celebration",
-        "Date Night",
-        "Travel"
-    ]
+    static let filters: [String] = []
+    static let all: [String] = []
 }

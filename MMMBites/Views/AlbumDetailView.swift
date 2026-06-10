@@ -220,7 +220,10 @@ struct AlbumDetailView: View {
         }
         .sheet(isPresented: $showEditAlbum) {
             NavigationStack {
-                AddAlbumView(albumToEdit: album) { updatedAlbum in
+                AddAlbumView(
+                    albumToEdit: album,
+                    existingTags: authViewModel.currentUser?.customTags ?? []
+                ) { updatedAlbum in
                     withAnimation(AppAnimation.snappy) {
                         album = updatedAlbum
                     }
