@@ -123,7 +123,7 @@ struct PrivacyPolicyView: View {
 
                         Users may request account or data deletion by contacting:
 
-                        lilalansang19@gmail.com
+                        placeholder@gmail.com
 
                         After receiving a deletion request, mmmbite will make reasonable efforts to delete or anonymise the user’s account data, uploaded photos, friend records, and related Firestore data, unless retention is required for legal, security, or technical reasons.
                         """
@@ -152,7 +152,7 @@ struct PrivacyPolicyView: View {
 
                         App: mmmbite
                         Developer: Handshake Minions
-                        Email: lilalansang19@gmail.com
+                        Email: placeholder@gmail.com
                         """
                     )
                 }
@@ -173,7 +173,7 @@ struct PrivacyPolicyView: View {
                 Text("Effective date: \(effectiveDate)")
                 Text("App name: mmmbite")
                 Text("Developer: Handshake Minions")
-                Text("Contact: lilalansang19@gmail.com")
+                Text("Contact: placeholder@gmail.com")
             }
             .font(AppFont.caption)
             .foregroundColor(AppColor.inkMuted)

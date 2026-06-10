@@ -548,7 +548,7 @@ struct MemoryBoardView: View {
             salt: 808
         ) * 42
 
-        return photo / 2 + 36 + randomExtra
+        return photo / 2 + 6 + randomExtra
     }
 
     private func boardPosition(for memory: Memory, index: Int, seed: Int = 0) -> CGPoint {
