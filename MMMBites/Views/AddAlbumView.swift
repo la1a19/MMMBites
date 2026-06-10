@@ -43,13 +43,18 @@ struct AddAlbumView: View {
     @State private var friendUsers: [User] = []
     @State private var isLoadingFriends = false
 
-    private let existingTagOptions = AlbumTagDefaults.all
+    let existingTags: [String]
 
     // Whether we are editing (affects title text, save behaviour)
     private var isEditing: Bool { albumToEdit != nil }
 
-    init(albumToEdit: Album? = nil, onSave: @escaping (Album) -> Void = { _ in }) {
+    init(
+        albumToEdit: Album? = nil,
+        existingTags: [String] = [],
+        onSave: @escaping (Album) -> Void = { _ in }
+    ) {
         self.albumToEdit = albumToEdit
+        self.existingTags = existingTags
         self.onSave = onSave
         // Pre-fill the form if editing, otherwise start empty
         _title = State(initialValue: albumToEdit?.title.uppercased() ?? "")
@@ -144,8 +149,7 @@ struct AddAlbumView: View {
                     .padding(.trailing, 6)
             }
             TextField("Enter album name", text: $title)
-                .font(.clash(22, weight: .bold))
-                .multilineTextAlignment(.center)
+                .font(AppFont.body)
                 .autocorrectionDisabled(true)
                 .textContentType(nil)
                 .textInputAutocapitalization(.characters)
@@ -181,12 +185,16 @@ struct AddAlbumView: View {
     }
 
     private var locationField: some View {
-        VStack(spacing: AppSpacing.s) {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("LOCATION")
+                .font(AppFont.captionBold)
+                .foregroundColor(AppColor.inkMuted)
+                .padding(.leading, 6)
             HStack(spacing: 6) {
                 Image(systemName: "mappin.and.ellipse")
                     .foregroundColor(AppColor.primary)
-                TextField("Location", text: $location)
-                    .font(AppFont.subheadline)
+                TextField("Add a place", text: $location)
+                    .font(AppFont.body)
                     .focused($isLocationFocused)
                     .autocorrectionDisabled(true)
                     .textInputAutocapitalization(.words)
@@ -260,7 +268,7 @@ struct AddAlbumView: View {
                 }
             }
 
-            suggestedTags
+            existingTagsView
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -441,6 +449,7 @@ struct AddAlbumView: View {
                 if description.isEmpty {
                     Text("Add a short note about this album")
                         .font(AppFont.body)
+                        .opacity(0.5)
                         .foregroundColor(AppColor.inkFaint)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 15)
@@ -483,6 +492,7 @@ struct AddAlbumView: View {
                     .frame(width: 260, height: 260)
                     .blur(radius: 24)
                     .opacity(0.4)
+                
 
                 if let coverPhotoData,
                    let image = UIImage(data: coverPhotoData) {
@@ -515,6 +525,10 @@ struct AddAlbumView: View {
                         )
                 }
 
+                Circle()
+                    .stroke(Color.white.opacity(0.8), lineWidth: 3)
+                    .frame(width: 240, height: 240)
+
                 // Edit (pencil) overlay
                 Circle()
                     .fill(AppGradient.hero)
@@ -528,7 +542,6 @@ struct AddAlbumView: View {
                     .shadow(color: AppColor.primary.opacity(0.45), radius: 12, y: 6)
                     .offset(x: 70, y: 70)
             }
-            .overlay(Circle().stroke(Color.white.opacity(0.8), lineWidth: 3).frame(width: 240, height: 240))
         }
         .buttonStyle(.plain)
         .pressableScale(0.97)
@@ -599,22 +612,22 @@ struct AddAlbumView: View {
         .transition(.scale.combined(with: .opacity))
     }
 
-    private var suggestedTags: some View {
-        let options = existingTagOptions.filter { option in
+    private var existingTagsView: some View {
+        let options = existingTags.filter { option in
             !tags.contains { $0.caseInsensitiveCompare(option) == .orderedSame }
         }
 
         return VStack(alignment: .leading, spacing: 8) {
             if !options.isEmpty {
-                Text("SUGGESTED ALBUM TAGS")
-                    .font(AppFont.tiny)
+                Text("EXISTING TAGS")
+                    .font(AppFont.captionBold)
                     .foregroundColor(AppColor.inkMuted)
                     .padding(.leading, 4)
 
                 FlowLayout(spacing: 8) {
                     ForEach(options, id: \.self) { tag in
                         Button {
-                            addSuggestedTag(tag)
+                            addExistingTag(tag)
                         } label: {
                             Text(tag)
                                 .font(AppFont.captionBold)
@@ -634,8 +647,12 @@ struct AddAlbumView: View {
     }
 
     private func addTagFromSearch() {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !tags.contains(trimmed) else { return }
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines).capitalized
+        guard !trimmed.isEmpty else { return }
+        guard !tags.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) else {
+            searchText = ""
+            return
+        }
         withAnimation(AppAnimation.bouncy) {
             tags.append(trimmed)
         }
@@ -643,7 +660,7 @@ struct AddAlbumView: View {
         Haptics.success()
     }
 
-    private func addSuggestedTag(_ tag: String) {
+    private func addExistingTag(_ tag: String) {
         guard !tags.contains(where: { $0.caseInsensitiveCompare(tag) == .orderedSame }) else { return }
         withAnimation(AppAnimation.bouncy) {
             tags.append(tag)

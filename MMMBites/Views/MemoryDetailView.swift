@@ -154,13 +154,9 @@ struct MemoryDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.left")
-                        .font(.clash(13, weight: .semibold))
-                    Text(albumTitle)
-                        .font(AppFont.subheadline.weight(.semibold))
-                }
-                .foregroundColor(AppColor.ink)
+                Text(albumTitle)
+                    .font(AppFont.subheadline.weight(.semibold))
+                    .foregroundColor(AppColor.ink)
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

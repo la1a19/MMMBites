@@ -34,7 +34,7 @@ struct LoginView: View {
 
                 // Title — Clash font, subtle white halo for depth on the blobby bg
                 Text("Log in")
-                    .font(.clash(46, weight: .bold))
+                    .font(.clash(42, weight: .bold))
                     .foregroundColor(.black)
                     .shadow(color: .white.opacity(0.55), radius: 12, y: 2)
 
@@ -47,7 +47,7 @@ struct LoginView: View {
                     // Email
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Email")
-                            .font(.clash(15, weight: .semibold))
+                            .font(.clash(17, weight: .semibold))
                             .foregroundColor(.black.opacity(0.78))
                             .padding(.leading, 4)
 
