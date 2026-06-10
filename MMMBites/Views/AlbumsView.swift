@@ -471,7 +471,6 @@ struct AlbumsView: View {
                     .frame(width: 40, height: 40)
                     .background(Circle().fill(isAnyFilterActive ? AppColor.primary : AppColor.surface.opacity(0.88)))
                     .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
-                showMemorySearch = true
             }
             .buttonStyle(.plain)
         }
