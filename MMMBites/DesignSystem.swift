@@ -208,27 +208,38 @@ enum AppAnimation {
 // MARK: - Haptics
 
 enum Haptics {
+    /// Mirrors the Settings toggle (`@AppStorage("pref.hapticFeedback")`).
+    /// Defaults to `true` when the user hasn't set the preference yet.
+    private static var isEnabled: Bool {
+        UserDefaults.standard.object(forKey: "pref.hapticFeedback") as? Bool ?? true
+    }
+
     static func tap() {
+        guard isEnabled else { return }
         #if canImport(UIKit)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         #endif
     }
     static func soft() {
+        guard isEnabled else { return }
         #if canImport(UIKit)
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
         #endif
     }
     static func success() {
+        guard isEnabled else { return }
         #if canImport(UIKit)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         #endif
     }
     static func warning() {
+        guard isEnabled else { return }
         #if canImport(UIKit)
         UINotificationFeedbackGenerator().notificationOccurred(.warning)
         #endif
     }
     static func selection() {
+        guard isEnabled else { return }
         #if canImport(UIKit)
         UISelectionFeedbackGenerator().selectionChanged()
         #endif
