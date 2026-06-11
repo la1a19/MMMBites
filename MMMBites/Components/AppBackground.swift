@@ -63,21 +63,20 @@ struct AppBackground: View {
     private var blobColors: (Color, Color, Color, Color) {
         switch variant {
         case .cool:
-            // Pre-GPT pastel set — sky/mint/cream/lilac for a fresh stage
-            // that lets warm food photos lead.
+            // Honey-led, with a soft peach blob so cool screens echo the warm gradient.
             return (
-                Color(red: 0.80, green: 0.91, blue: 0.99).opacity(0.55),  // sky
-                Color(red: 0.81, green: 0.93, blue: 0.91).opacity(0.55),  // mint
-                Color(red: 0.98, green: 0.94, blue: 0.80).opacity(0.55),  // lemon cream
-                Color(red: 0.90, green: 0.86, blue: 0.99).opacity(0.45)   // lilac
+                AppColor.bgMint.opacity(0.55),
+                AppColor.bgSky.opacity(0.55),
+                AppColor.bgCream.opacity(0.55),
+                AppColor.bgBlush.opacity(0.40)
             )
         case .warm:
-            // Rose-led, finished with peach — same family, warmer emphasis.
+            // Peach-led, finished with honey — mirror of the cool variant.
             return (
-                AppColor.bgRose.opacity(0.60),
-                AppColor.bgPeach.opacity(0.55),
+                AppColor.bgBlush.opacity(0.60),
+                AppColor.bgLilac.opacity(0.55),
                 AppColor.bgCream.opacity(0.55),
-                AppColor.bgBlush.opacity(0.45)
+                AppColor.bgMint.opacity(0.45)
             )
         }
     }
@@ -85,16 +84,16 @@ struct AppBackground: View {
     private var particleColors: (SKColor, SKColor) {
         switch variant {
         case .cool:
-            // Sky blue + lemon cream — pre-GPT pastel mix.
+            // Cream + honey — same family as warm, lighter dusting.
             return (
-                SKColor(red: 195 / 255, green: 236 / 255, blue: 255 / 255, alpha: 1.0),
-                SKColor(red: 247 / 255, green: 235 / 255, blue: 204 / 255, alpha: 1.0)
+                SKColor(red: 255 / 255, green: 244 / 255, blue: 232 / 255, alpha: 1.0),
+                SKColor(red: 246 / 255, green: 209 / 255, blue: 175 / 255, alpha: 1.0)
             )
         case .warm:
-            // Rose + peach dusting.
+            // Peach + honey — matches the AddAlbumView reference screen.
             return (
-                SKColor(red: 248 / 255, green: 200 / 255, blue: 196 / 255, alpha: 1.0),
-                SKColor(red: 247 / 255, green: 213 / 255, blue: 191 / 255, alpha: 1.0)
+                SKColor(red: 233 / 255, green: 146 / 255, blue: 117 / 255, alpha: 1.0),
+                SKColor(red: 246 / 255, green: 209 / 255, blue: 175 / 255, alpha: 1.0)
             )
         }
     }

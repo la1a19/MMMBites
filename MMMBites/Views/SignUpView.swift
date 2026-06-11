@@ -1,3 +1,4 @@
+//
 //  SignUpView.swift
 //  MMMBites
 //
@@ -18,81 +19,47 @@ struct SignUpView: View {
 
     var body: some View {
         ZStack {
-            // Animated Background
-            AnimatedBlobBackground()
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
+            AppBackground(variant: .warm)
 
-            VStack(spacing: 0) {
-                
-                // Top Card Container (Touches the absolute top, ends right above the button)
-                VStack(spacing: 0) {
-                    
-                    // Custom Back Button Row
-                    HStack {
-                        Button(action: {
-                            Haptics.soft() // Fixed the typo here!
-                            dismiss()
-                        }) {
-                            Image(systemName: "arrow.backward")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.black)
-                                .frame(width: 42, height: 42)
-                                .background(Color.white)
-                                .clipShape(Circle())
-                                .shadow(color: Color.black.opacity(0.1), radius: 6, x: 0, y: 3)
-                        }
-                        Spacer()
+            ScrollView {
+                VStack(spacing: AppSpacing.xl) {
+                    // Header
+                    VStack(spacing: AppSpacing.s) {
+                        Text("Create your account")
+                            .font(AppFont.title)
+                            .foregroundColor(AppColor.ink)
+                            .multilineTextAlignment(.center)
+                        Text("Start building your bite-bubble album.")
+                            .font(AppFont.subheadline)
+                            .foregroundColor(AppColor.inkMuted)
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.top, 60) // Clears the notch / Dynamic Island area safely
+                    .padding(.top, 32)
+                    .bounceOnAppear()
 
-                    // Main Title
-                    Text("Sign Up")
-                        .font(.clash(36, weight: .medium))
-                        .foregroundColor(.black)
-                        .padding(.top, 20)
-                        .padding(.bottom, 20)
+                    // Fields card
+                    VStack(spacing: AppSpacing.l) {
+                        AuthTextField(label: "Username", placeholder: "@yourhandle", input: $username, icon: "person.fill")
+                        AuthTextField(label: "Email", placeholder: "you@example.com", input: $email, icon: "envelope.fill")
+                        AuthTextField(label: "Password", placeholder: "At least 6 characters", input: $password, type: .password, icon: "lock.fill")
+                        AuthTextField(label: "Confirm Password", placeholder: "Re-enter password", input: $confirmPassword, type: .password, icon: "lock.rotation")
 
-                    // Input Fields Scroll Area
-                    ScrollView(showsIndicators: false) {
-                        VStack(spacing: 22) {
-                            customInputField(label: "Username", text: $username, isSecure: false)
-                            customInputField(label: "Email", text: $email, isSecure: false)
-                            customInputField(label: "Password", text: $password, isSecure: true)
-                            customInputField(label: "Confirm Password", text: $confirmPassword, isSecure: true)
-
-                            if !viewModel.errorMessage.isEmpty {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                    Text(viewModel.errorMessage)
-                                }
-                                .font(.clash(12, weight: .regular))
-                                .foregroundColor(.red)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .transition(.move(edge: .top).combined(with: .opacity))
+                        if !viewModel.errorMessage.isEmpty {
+                            HStack(spacing: 6) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                Text(viewModel.errorMessage)
                             }
+                            .font(AppFont.caption)
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .transition(.move(edge: .top).combined(with: .opacity))
                         }
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 32)
                     }
-                }
-                .background(
-                    Color.white.opacity(0.45) // Translucent light card background
-                        .clipShape(UnevenRoundedRectangle(
-                            bottomLeadingRadius: 40,
-                            bottomTrailingRadius: 40
-                        ))
-                )
-                .ignoresSafeArea(edges: .top) // Forces the white container to touch the very top edge
+                    .glassCard()
+                    .padding(.horizontal, AppSpacing.l)
+                    .bounceOnAppear(delay: 0.1)
 
-                Spacer(minLength: 20) // The controlled gap right above the Create button
-
-                // Bottom Controls Area
-                VStack(spacing: 20) {
-                    
-                    // Create Button
-                    Button(action: {
+                    // Create
+                    PrimaryButton(title: "Create account", icon: "sparkles", isLoading: viewModel.isLoading) {
                         Task {
                             let success = await viewModel.signUp(
                                 username: username,
@@ -107,63 +74,20 @@ struct SignUpView: View {
                                 Haptics.warning()
                             }
                         }
-                    }) {
-                        if viewModel.isLoading {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        } else {
-                            Text("Create")
-                                .font(.clash(22, weight: .medium))
-                                .foregroundColor(.white)
-                        }
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-                    .background(AppColor.primary)
-                    .cornerRadius(22)
-                    .padding(.horizontal, 32)
-                    .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 4)
+                    .padding(.horizontal, AppSpacing.xxxl)
+                    .bounceOnAppear(delay: 0.2)
 
-                    // Footer Link
-                    Button(action: {
-                        Haptics.soft()
+                    // Back to login
+                    SecondaryButton(title: "Have an account? Log in") {
                         dismiss()
-                    }) {
-                        Text("Already have an account? Log in")
-                            .font(.clash(14, weight: .regular))
-                            .foregroundColor(.black)
                     }
-                }
-                .padding(.bottom, 30)
-            }
-        }
-        .scrollDismissesKeyboard(.interactively)
-        .animation(.snappy, value: viewModel.errorMessage)
-    }
-
-    // Helper component to build form blocks cleanly
-    @ViewBuilder
-    private func customInputField(label: String, text: Binding<String>, isSecure: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(label)
-                .font(.clash(16, weight: .medium))
-                .foregroundColor(.black)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            
-            Group {
-                if isSecure {
-                    SecureField("", text: text)
-                } else {
-                    TextField("", text: text)
+                    .padding(.bottom, AppSpacing.xl)
                 }
             }
-            .autocapitalization(.none)
-            .disableAutocorrection(true)
-            .padding(.vertical, 18)
-            .padding(.horizontal, 16)
-            .background(Color.white)
-            .cornerRadius(20)
+            .scrollDismissesKeyboard(.interactively)
         }
+        .animation(AppAnimation.snappy, value: viewModel.errorMessage)
     }
 }
 

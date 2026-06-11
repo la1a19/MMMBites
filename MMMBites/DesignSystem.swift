@@ -13,11 +13,10 @@ import UIKit
 // MARK: - Brand palette
 
 enum AppColor {
-    // Brand palette — warm berry and coral tones that sit naturally on the
-    // blush/peach backgrounds while keeping controls readable.
-    static let primary    = Color(red: 166 / 255, green:  54 / 255, blue:  91 / 255)   // #A6365B berry rose
-    static let secondary  = Color(red: 226 / 255, green: 111 / 255, blue:  82 / 255)   // #E26F52 coral
-    static let accent     = Color(red: 230 / 255, green: 164 / 255, blue:  63 / 255)   // #E6A43F warm honey
+    // Primary brand
+    static let primary    = Color(red: 0.96, green: 0.49, blue: 0.42)   // warm coral
+    static let secondary  = Color(red: 0.55, green: 0.45, blue: 0.92)   // soft lavender
+    static let accent     = Color(red: 0.99, green: 0.78, blue: 0.36)   // golden honey
     static let background = Color.white
 
     // Surfaces
@@ -26,36 +25,29 @@ enum AppColor {
     static let surfaceGlass = Color.white.opacity(0.7)
 
     // Ink (text)
-    static let ink        = Color(red: 0.10, green: 0.10, blue: 0.14)                  // #191923
-    static let inkMuted   = Color(red: 0.34, green: 0.36, blue: 0.42)                  // #575C6B
-    static let inkFaint   = Color(red: 0.56, green: 0.58, blue: 0.63)                  // #8F94A1
+    static let ink        = Color(red: 0.10, green: 0.10, blue: 0.14)
+    static let inkMuted   = Color(red: 0.34, green: 0.36, blue: 0.42)
+    static let inkFaint   = Color(red: 0.56, green: 0.58, blue: 0.63)
 
-    // Pastel background stops — Ada pink family used by the warm variant and
-    // shimmer placeholders. Cool variant inlines its own pastels in AppGradient.
-    static let bgBlush    = Color(red: 255 / 255, green: 201 / 255, blue: 208 / 255)   // #FFC9D0
-    static let bgCream    = Color(red: 255 / 255, green: 232 / 255, blue: 230 / 255)   // #FFE8E6
-    static let bgPeach    = Color(red: 247 / 255, green: 213 / 255, blue: 191 / 255)   // #F7D5BF
-    static let bgRose     = Color(red: 248 / 255, green: 200 / 255, blue: 196 / 255)   // #F8C8C4
-    static let bgWarm     = Color(red: 250 / 255, green: 230 / 255, blue: 204 / 255)   // #FAE6CC
+    // Pastel background stops
+    static let bgMint     = Color(red: 0.81, green: 0.93, blue: 0.91)
+    static let bgCream    = Color(red: 0.98, green: 0.94, blue: 0.80)
+    static let bgSky      = Color(red: 0.80, green: 0.91, blue: 0.99)
+    static let bgBlush    = Color(red: 0.99, green: 0.86, blue: 0.88)
+    static let bgLilac    = Color(red: 0.90, green: 0.86, blue: 0.99)
 
-    // Legacy aliases (kept so shimmer placeholders compile)
-    static let bgMint     = bgWarm
-    static let bgSky      = bgBlush
-    static let bgLilac    = bgPeach
-
-    // Tag palette — bright multi-color pastels. Each category gets its own
-    // hue so chips pop on the mint background without all reading as one tone.
+    // Tag palette
     static func tag(_ tag: String) -> Color {
         switch tag.lowercased() {
-        case "tree", "nature":    return Color(red: 0.40, green: 0.74, blue: 0.51)   // #66BC82 fresh green
-        case "picnic":            return Color(red: 0.96, green: 0.62, blue: 0.30)   // #F59E4D warm orange
-        case "fancy":             return Color(red: 0.98, green: 0.78, blue: 0.34)   // #FAC757 honey yellow
-        case "family":            return Color(red: 0.95, green: 0.55, blue: 0.70)   // #F28BB3 soft pink
-        case "sea", "summer":     return Color(red: 0.34, green: 0.71, blue: 0.92)   // #56B5EB sky blue
-        case "fun":               return Color(red: 0.94, green: 0.47, blue: 0.60)   // #F0789A hot pink
-        case "street food":       return Color(red: 0.70, green: 0.45, blue: 0.95)   // #B273F2 purple
-        case "good view":         return Color(red: 0.36, green: 0.65, blue: 0.96)   // #5CA6F5 cornflower
-        default:                  return Color(red: 0.62, green: 0.62, blue: 0.72)   // #9E9EB8 neutral gray
+        case "tree", "nature":    return Color(red: 0.40, green: 0.74, blue: 0.51)
+        case "picnic":            return Color(red: 0.96, green: 0.62, blue: 0.30)
+        case "fancy":             return Color(red: 0.98, green: 0.78, blue: 0.34)
+        case "family":            return Color(red: 0.95, green: 0.55, blue: 0.70)
+        case "sea", "summer":     return Color(red: 0.34, green: 0.71, blue: 0.92)
+        case "fun":               return Color(red: 0.94, green: 0.47, blue: 0.60)
+        case "street food":       return Color(red: 0.70, green: 0.45, blue: 0.95)
+        case "good view":         return Color(red: 0.36, green: 0.65, blue: 0.96)
+        default:                  return Color(red: 0.62, green: 0.62, blue: 0.72)
         }
     }
 }
@@ -63,55 +55,45 @@ enum AppColor {
 // MARK: - Gradients
 
 enum AppGradient {
-    // Cool screens — fresh pastel (mint → lemon cream → sky). Used on album
-    // browsing surfaces so warm food photos pop against a neutral cool stage.
     static let background = LinearGradient(
-        colors: [
-            Color(red: 0.81, green: 0.93, blue: 0.91),   // #CEEDE7 mint
-            Color(red: 0.98, green: 0.94, blue: 0.80),   // #FAF0CC lemon cream
-            Color(red: 0.80, green: 0.91, blue: 0.99)    // #CCE8FD sky
-        ],
+        colors: [AppColor.bgMint, AppColor.bgCream, AppColor.bgSky],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
-    // Warm screens — rose-led, ending in peach. Used on create/edit sheets
-    // and personal surfaces (profile, recap) for an intimate warm tone.
     static let backgroundWarm = LinearGradient(
-        colors: [AppColor.bgRose, AppColor.bgCream, AppColor.bgPeach],
+        colors: [AppColor.bgBlush, AppColor.bgCream, AppColor.bgLilac],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
-    // Berry fade for primary actions. The darker stop keeps white labels
-    // readable without the harsh neon feel of the previous palette.
     static let primaryButton = LinearGradient(
         colors: [
-            Color(red: 188 / 255, green:  62 / 255, blue: 101 / 255),  // #BC3E65
-            Color(red: 126 / 255, green:  38 / 255, blue:  69 / 255)   // #7E2645
+            AppColor.primary,
+            AppColor.primary.opacity(0.85)
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
-    // Warm profile/hero sweep using berry, coral, and honey.
+    // Coral → lavender → coral fade — used by the WelcomeView monogram,
+    // CTA capsule, and Sign up link.
     static let hero = LinearGradient(
         colors: [
-            AppColor.secondary,
             AppColor.primary,
-            Color(red: 126 / 255, green:  38 / 255, blue:  69 / 255)   // #7E2645 deep berry
+            AppColor.secondary,
+            AppColor.primary.opacity(0.85)
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
-    /// Dark readable variant for text/icon fills where contrast matters on
-    /// pastel surfaces.
+    /// Darker, readable variant used as a text/icon fill on pastel surfaces.
     static let heroText = LinearGradient(
         colors: [
-            Color(red: 126 / 255, green:  38 / 255, blue:  69 / 255),  // #7E2645
-            Color(red: 104 / 255, green:  31 / 255, blue:  57 / 255),  // #681F39
-            Color(red:  82 / 255, green:  24 / 255, blue:  45 / 255)   // #52182D
+            AppColor.primary,
+            AppColor.secondary,
+            AppColor.primary.opacity(0.85)
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
