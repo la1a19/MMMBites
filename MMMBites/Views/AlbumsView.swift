@@ -209,6 +209,15 @@ struct AlbumsView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }
+            .sheet(isPresented: $showMemoryBoardView) {
+                MemoryBoardView(
+                    memories: viewModel.memories,
+                    albums: viewModel.albums
+                )
+                .environmentObject(authViewModel)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
             .sheet(isPresented: $showFilterSheet) {
                 AlbumFilterSheet(
                     availableTags: filterOptions,
@@ -484,18 +493,11 @@ struct AlbumsView: View {
 
     private var sectionHeader: some View {
         HStack(alignment: .center) {
-            Text(showMemoryBoardView ? "Memory Board" : "Bite Bubbles")
+            Text("Bite Bubbles")
                 .font(AppFont.titleSmall)
                 .foregroundColor(AppColor.ink)
             Spacer()
-            if showMemoryBoardView {
-                Text("\(viewModel.memories.count)")
-                    .font(AppFont.captionBold)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(AppGradient.hero))
-            } else if !filteredAlbums.isEmpty {
+            if !filteredAlbums.isEmpty {
                 Text("\(filteredAlbums.count)")
                     .font(AppFont.captionBold)
                     .foregroundColor(.white)
@@ -514,12 +516,6 @@ struct AlbumsView: View {
                 loadingPlaceholder
             } else if filteredAlbums.isEmpty {
                 emptyState
-            } else if showMemoryBoardView {
-                MemoryBoardView(
-                    memories: viewModel.memories,
-                    albums: viewModel.albums
-                )
-                .environmentObject(authViewModel)
             } else {
                 carouselView
             }
