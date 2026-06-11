@@ -12,7 +12,7 @@ struct MemoryPhotoThumbnail: View {
     let height: CGFloat
     var isCircle = true
     var placeholderSystemImage = "photo.fill"
-
+    
     var body: some View {
         Group {
             if isCircle {

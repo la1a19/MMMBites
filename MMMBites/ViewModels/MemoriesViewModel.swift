@@ -67,6 +67,8 @@ final class MemoriesViewModel: ObservableObject {
         currentAlbumID = nil
         memories = []
     }
+    
+    
 
     func add(_ memory: Memory) async {
         var stored = memory
