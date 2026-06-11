@@ -335,30 +335,19 @@ struct MemoryNoteCard: View {
 
 struct MemoryExtrasCard: View {
     let memory: Memory
-    let currentUserID: String?
     let friendName: (String) -> String
     let friendAvatarImage: (String) -> Image?
-    let canChooseFriendTags: Bool
-    let onAddFriendTag: (String) -> Void
-    let onDeleteFriendTag: (FriendMemorableTag) -> Void
-
-    @State private var customFriendTag: String = ""
-    @FocusState private var isCustomTagFocused: Bool
 
     private var hasBestBite: Bool {
         !(memory.bestBite ?? "").isEmpty
     }
 
     private var hasMemorable: Bool {
-        !memory.memorableTags.isEmpty || !friendMemorableTags.isEmpty || canChooseFriendTags
+        !memory.memorableTags.isEmpty
     }
 
     private var hasPeople: Bool {
         !memory.participantIds.isEmpty
-    }
-
-    private var friendMemorableTags: [FriendMemorableTag] {
-        memory.friendMemorableTags ?? []
     }
 
     var body: some View {
@@ -421,25 +410,6 @@ struct MemoryExtrasCard: View {
                 }
             }
 
-            if !friendMemorableTags.isEmpty {
-                FlowLayout(spacing: 8) {
-                    ForEach(friendMemorableTags.sorted { $0.createdAt > $1.createdAt }) { friendTag in
-                        friendTagChip(friendTag)
-                    }
-                }
-            }
-
-            if canChooseFriendTags {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("ADD YOUR REASONS")
-                        .font(.clash(10, weight: .semibold))
-                        .tracking(1.1)
-                        .foregroundColor(AppColor.inkFaint)
-
-                    customFriendTagField
-                }
-                .padding(.top, 2)
-            }
         }
     }
 
@@ -451,75 +421,6 @@ struct MemoryExtrasCard: View {
             .padding(.vertical, 6)
             .background(Capsule().fill(AppColor.tag(tag)))
             .shadow(color: AppColor.tag(tag).opacity(0.35), radius: 4, y: 2)
-    }
-
-    private func friendTagChip(_ friendTag: FriendMemorableTag) -> some View {
-        let canDelete = friendTag.userId == currentUserID
-
-        return HStack(spacing: 5) {
-            Text(friendTag.tag)
-                .font(.clash(12, weight: .semibold))
-
-            if canDelete {
-                Button {
-                    Haptics.warning()
-                    onDeleteFriendTag(friendTag)
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.clash(9, weight: .bold))
-                        .foregroundColor(AppColor.secondary)
-                        .frame(width: 14, height: 14)
-                        .background(AppColor.secondary.opacity(0.14), in: Circle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .foregroundColor(AppColor.secondary)
-        .padding(.horizontal, canDelete ? 8 : 10)
-        .padding(.vertical, 6)
-        .background(Capsule().fill(AppColor.secondary.opacity(0.10)))
-        .overlay(Capsule().stroke(AppColor.secondary.opacity(0.45), lineWidth: 1.2))
-    }
-
-    private var customFriendTagField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "plus")
-                .font(.clash(11, weight: .bold))
-                .foregroundColor(AppColor.secondary)
-
-            TextField("Add memorable reasons", text: $customFriendTag)
-                .font(AppFont.caption)
-                .foregroundColor(AppColor.ink)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled(true)
-                .focused($isCustomTagFocused)
-                .submitLabel(.done)
-                .onSubmit(addCustomFriendTag)
-
-            Button(action: addCustomFriendTag) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.clash(20, weight: .bold))
-                    .foregroundColor(canSubmitCustomFriendTag ? AppColor.secondary : AppColor.inkFaint)
-            }
-            .buttonStyle(.plain)
-            .disabled(!canSubmitCustomFriendTag)
-        }
-        .padding(.horizontal, 12)
-        .frame(minHeight: 38)
-        .background(AppColor.secondary.opacity(0.08), in: Capsule(style: .continuous))
-        .overlay(Capsule(style: .continuous).stroke(AppColor.secondary.opacity(0.35), lineWidth: 1.1))
-    }
-
-    private var canSubmitCustomFriendTag: Bool {
-        !customFriendTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private func addCustomFriendTag() {
-        let trimmed = customFriendTag.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        onAddFriendTag(trimmed)
-        customFriendTag = ""
-        isCustomTagFocused = false
     }
 
     private var peopleBlock: some View {

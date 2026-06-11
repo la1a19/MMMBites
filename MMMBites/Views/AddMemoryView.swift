@@ -1281,7 +1281,7 @@ struct AddMemoryView: View {
                 bestBite: trimmedBite.isEmpty ? nil : trimmedBite,
                 memorableTags: memorableTags,
                 participantIds: participants,
-                friendMemorableTags: original.friendMemorableTags,
+                friendMemorableTags: [],
                 date: date,
                 createdAt: original.createdAt,
                 updatedAt: Date()

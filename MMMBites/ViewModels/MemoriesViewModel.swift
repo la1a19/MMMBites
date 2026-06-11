@@ -42,9 +42,14 @@ final class MemoriesViewModel: ObservableObject {
                         self.errorMessage = error.localizedDescription
                         return
                     }
+                    var memoryIDsNeedingFriendTagCleanup: [String] = []
                     let decoded: [Memory] = snapshot?.documents.compactMap { doc in
                         do {
                             var memory = try doc.data(as: Memory.self)
+                            if !(memory.friendMemorableTags ?? []).isEmpty {
+                                memory.friendMemorableTags = []
+                                memoryIDsNeedingFriendTagCleanup.append(doc.documentID)
+                            }
                             // Restore locally cached photo bytes whenever the
                             // doc still lacks Storage URLs (slow/failed upload).
                             if memory.imageURLs.isEmpty {
@@ -57,6 +62,7 @@ final class MemoriesViewModel: ObservableObject {
                         }
                     } ?? []
                     self.memories = decoded.sorted { $0.date > $1.date }
+                    await self.clearFriendMemorableTags(for: memoryIDsNeedingFriendTagCleanup)
                 }
             }
     }
@@ -67,8 +73,26 @@ final class MemoriesViewModel: ObservableObject {
         currentAlbumID = nil
         memories = []
     }
-    
-    
+
+    private func clearFriendMemorableTags(for memoryIDs: [String]) async {
+        guard !memoryIDs.isEmpty else { return }
+        do {
+            for chunk in memoryIDs.chunked(into: 450) {
+                let batch = database.batch()
+                for memoryID in chunk {
+                    let ref = database.collection("memories").document(memoryID)
+                    batch.updateData([
+                        "friendMemorableTags": [],
+                        "updatedAt": Timestamp(date: Date())
+                    ], forDocument: ref)
+                }
+                try await batch.commit()
+            }
+        } catch {
+            print("[MemoriesViewModel] friend tag cleanup error: \(error)")
+            errorMessage = error.localizedDescription
+        }
+    }
 
     func add(_ memory: Memory) async {
         var stored = memory

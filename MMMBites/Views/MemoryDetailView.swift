@@ -53,24 +53,8 @@ struct MemoryDetailView: View {
         authViewModel.currentUser?.id
     }
 
-    private var currentUsername: String {
-        authViewModel.currentUser?.username ?? "User"
-    }
-
-    private var currentAvatarData: String? {
-        authViewModel.currentUser?.avatarData
-    }
-
     private var canEditMemory: Bool {
         memory.capturedById == currentUserID
-    }
-
-    private var canChooseFriendTags: Bool {
-        guard let currentUserID else { return false }
-        guard memory.capturedById != currentUserID else { return false }
-        if memory.participantIds.contains(currentUserID) { return true }
-        guard let album else { return true }
-        return album.ownerId == currentUserID || album.friendIds.contains(currentUserID)
     }
 
     private var isFavourite: Bool {
@@ -112,12 +96,8 @@ struct MemoryDetailView: View {
 
                     MemoryExtrasCard(
                         memory: memory,
-                        currentUserID: currentUserID,
                         friendName: friendName(for:),
-                        friendAvatarImage: friendAvatarImage(for:),
-                        canChooseFriendTags: canChooseFriendTags,
-                        onAddFriendTag: addFriendMemorableTag(_:),
-                        onDeleteFriendTag: deleteFriendMemorableTag(_:)
+                        friendAvatarImage: friendAvatarImage(for:)
                     )
                     .bounceOnAppear(delay: 0.14)
 
@@ -255,6 +235,7 @@ struct MemoryDetailView: View {
             Text("This will permanently delete \"\(memory.title)\". This can't be undone.")
         }
         .task(id: friendsLoadKey) {
+            clearFriendMemorableTagsIfNeeded()
             await loadFriends()
         }
     }
@@ -438,48 +419,9 @@ private extension MemoryDetailView {
         }
     }
 
-    func addFriendMemorableTag(_ tag: String) {
-        guard let currentUserID else { return }
-
-        let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        var updatedTags = memory.friendMemorableTags ?? []
-        let alreadyExistsInMemory = memory.memorableTags.contains {
-            $0.caseInsensitiveCompare(trimmed) == .orderedSame
-        } || updatedTags.contains {
-            $0.tag.caseInsensitiveCompare(trimmed) == .orderedSame
-        }
-        guard !alreadyExistsInMemory else {
-            return
-        }
-
-        updatedTags.append(
-            FriendMemorableTag(
-                userId: currentUserID,
-                username: currentUsername,
-                avatarData: currentAvatarData,
-                tag: trimmed
-            )
-        )
-
-        withAnimation(AppAnimation.snappy) {
-            memory.friendMemorableTags = updatedTags
-        }
-        Haptics.success()
-        commitMemoryUpdate()
-    }
-
-    func deleteFriendMemorableTag(_ tag: FriendMemorableTag) {
-        guard tag.userId == currentUserID else { return }
-
-        // Always send the array (even when empty) — sending `nil` makes Codable
-        // omit the field and Firestore's `merge: true` leaves the old value
-        // untouched, which is why the deleted tag would reappear on re-entry.
-        let updatedTags = (memory.friendMemorableTags ?? []).filter { $0.id != tag.id }
-        withAnimation(AppAnimation.snappy) {
-            memory.friendMemorableTags = updatedTags
-        }
+    func clearFriendMemorableTagsIfNeeded() {
+        guard !(memory.friendMemorableTags ?? []).isEmpty else { return }
+        memory.friendMemorableTags = []
         commitMemoryUpdate()
     }
 
