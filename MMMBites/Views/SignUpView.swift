@@ -78,9 +78,39 @@ struct SignUpView: View {
                     .padding(.horizontal, AppSpacing.xxxl)
                     .bounceOnAppear(delay: 0.2)
 
-                    // Back to login
-                    SecondaryButton(title: "Have an account? Log in") {
-                        dismiss()
+                    // Back to login — Log in styled as a distinct pill so it's
+                    // obviously tappable instead of looking like body text.
+                    HStack(spacing: AppSpacing.s) {
+                        Text("Have an account?")
+                            .font(.clash(14, weight: .regular))
+                            .foregroundColor(AppColor.inkMuted)
+
+                        Button {
+                            Haptics.tap()
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.right.circle.fill")
+                                    .font(.clash(15, weight: .bold))
+                                Text("Log in")
+                                    .font(.clash(14, weight: .semibold))
+                                    .tracking(0.4)
+                            }
+                            .foregroundStyle(AppGradient.hero)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(.ultraThinMaterial)
+                            )
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .stroke(AppColor.primary.opacity(0.45), lineWidth: 1)
+                            )
+                            .shadow(color: AppColor.primary.opacity(0.18), radius: 6, y: 3)
+                        }
+                        .buttonStyle(.plain)
+                        .pressableScale()
                     }
                     .padding(.bottom, AppSpacing.xl)
                 }

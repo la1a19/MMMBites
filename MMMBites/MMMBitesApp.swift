@@ -18,14 +18,19 @@ struct MMMBitesApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Group {
-                if authViewModel.isLoggedIn {
-                    AlbumsView()
-                } else {
-                    WelcomeView()
+            ZStack {
+                Group {
+                    if authViewModel.isLoggedIn {
+                        AlbumsView()
+                    } else {
+                        WelcomeView()
+                    }
                 }
+                .environmentObject(authViewModel)
+
+                ToastOverlay()
+                    .ignoresSafeArea(edges: .bottom)
             }
-            .environmentObject(authViewModel)
         }
     }
 }

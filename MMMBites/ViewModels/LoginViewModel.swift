@@ -509,6 +509,7 @@ class LoginViewModel: ObservableObject {
             friendSearchMessage = "Removed \(user.username)"
         } catch {
             friendSearchMessage = error.localizedDescription
+            ToastCenter.shared.showError("Couldn't remove friend. Try again.")
         }
     }
 
@@ -530,6 +531,7 @@ class LoginViewModel: ObservableObject {
             currentUser?.customTags = tags
         } catch {
             errorMessage = error.localizedDescription
+            ToastCenter.shared.showError("Couldn't save tags. Try again.")
         }
     }
 
@@ -552,6 +554,7 @@ class LoginViewModel: ObservableObject {
         } catch {
             errorMessage = "Couldn't save profile photo: \(error.localizedDescription)"
             showError = true
+            ToastCenter.shared.showError("Couldn't save profile photo.")
         }
     }
 

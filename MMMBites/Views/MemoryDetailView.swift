@@ -396,6 +396,9 @@ private extension MemoryDetailView {
                     .setData(from: updatedMemory, merge: true)
             } catch {
                 print("[MemoryDetailView] memory update error: \(error)")
+                await MainActor.run {
+                    ToastCenter.shared.showError("Couldn't save change. Check your connection.")
+                }
             }
         }
     }

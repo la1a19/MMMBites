@@ -203,6 +203,7 @@ final class AlbumsViewModel: ObservableObject {
         } catch {
             print("[AlbumsViewModel] add error: \(error)")
             errorMessage = error.localizedDescription
+            ToastCenter.shared.showError("Couldn't create album. Check your connection.")
             return
         }
 
@@ -225,6 +226,7 @@ final class AlbumsViewModel: ObservableObject {
         } catch {
             print("[AlbumsViewModel] update error: \(error)")
             errorMessage = error.localizedDescription
+            ToastCenter.shared.showError("Couldn't update album. Try again.")
             return
         }
 
@@ -247,6 +249,7 @@ final class AlbumsViewModel: ObservableObject {
             print("[AlbumsViewModel] cover upload error: \(error)")
             if !PhotoStorage.isMissingObjectError(error) {
                 errorMessage = error.localizedDescription
+                ToastCenter.shared.showError("Cover photo upload failed. Album was saved.")
             }
         }
     }
@@ -267,6 +270,7 @@ final class AlbumsViewModel: ObservableObject {
             print("[AlbumsViewModel] remove error: \(error)")
             if !PhotoStorage.isMissingObjectError(error) {
                 errorMessage = error.localizedDescription
+                ToastCenter.shared.showError("Couldn't delete album. Try again.")
             }
         }
     }

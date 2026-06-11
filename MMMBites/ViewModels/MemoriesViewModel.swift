@@ -114,6 +114,7 @@ final class MemoriesViewModel: ObservableObject {
         } catch {
             print("[MemoriesViewModel] add error: \(error)")
             errorMessage = error.localizedDescription
+            ToastCenter.shared.showError("Couldn't save memory. Check your connection.")
             return
         }
 
@@ -139,6 +140,7 @@ final class MemoriesViewModel: ObservableObject {
         } catch {
             print("[MemoriesViewModel] update error: \(error)")
             errorMessage = error.localizedDescription
+            ToastCenter.shared.showError("Couldn't update memory. Try again.")
             return
         }
 
@@ -162,6 +164,7 @@ final class MemoriesViewModel: ObservableObject {
             print("[MemoriesViewModel] photo upload error: \(error)")
             if !PhotoStorage.isMissingObjectError(error) {
                 errorMessage = error.localizedDescription
+                ToastCenter.shared.showError("Photo upload failed. We'll keep your memory saved locally.")
             }
         }
     }
@@ -175,6 +178,7 @@ final class MemoriesViewModel: ObservableObject {
             print("[MemoriesViewModel] remove error: \(error)")
             if !PhotoStorage.isMissingObjectError(error) {
                 errorMessage = error.localizedDescription
+                ToastCenter.shared.showError("Couldn't delete memory. Try again.")
             }
         }
     }
