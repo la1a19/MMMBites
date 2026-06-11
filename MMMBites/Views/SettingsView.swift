@@ -28,9 +28,7 @@ struct SettingsView: View {
     @AppStorage("pref.appearance")          private var appearanceRaw: String = AppearanceMode.system.rawValue
 
     @State private var showFeedbackSheet = false
-    @State private var navigateToPrivacyPolicy = false
-    
-    
+
     private var appVersion: String {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
@@ -81,9 +79,6 @@ struct SettingsView: View {
                 FeedbackSheet()
                     .presentationDetents([.medium])
                     .presentationDragIndicator(.visible)
-            }
-            .navigationDestination(isPresented: $navigateToPrivacyPolicy) {
-                PrivacyPolicyView()
             }
         }
     }
@@ -166,10 +161,7 @@ struct SettingsView: View {
             navRow(icon: "lock.shield.fill",
                    tint: AppColor.secondary,
                    title: "Privacy policy",
-                   action: {
-                       Haptics.tap()
-                       navigateToPrivacyPolicy = true
-                   })
+                   action: { Haptics.tap() })
             divider
             navRow(icon: "doc.text.fill",
                    tint: AppColor.accent,
