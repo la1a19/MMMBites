@@ -11,18 +11,6 @@ import FirebaseFirestore
 import AuthenticationServices
 import CryptoKit
 
-enum AppearanceMode: String, CaseIterable, Identifiable {
-    case system, light, dark
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .system: return "System"
-        case .light:  return "Light"
-        case .dark:   return "Dark"
-        }
-    }
-}
-
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
@@ -34,7 +22,6 @@ struct SettingsView: View {
     // Persisted preferences
     @AppStorage("pref.hapticFeedback")      private var hapticFeedback: Bool = true
     @AppStorage("pref.memoryReminders")     private var memoryReminders: Bool = true
-    @AppStorage("pref.appearance")          private var appearanceRaw: String = AppearanceMode.system.rawValue
 
     @State private var showFeedbackSheet = false
     @State private var showPrivacyPolicy = false
@@ -59,9 +46,6 @@ struct SettingsView: View {
                     VStack(spacing: AppSpacing.xl) {
                         preferencesSection
                             .bounceOnAppear()
-
-                        appearanceSection
-                            .bounceOnAppear(delay: 0.05)
 
                         aboutSection
                             .bounceOnAppear(delay: 0.1)
@@ -149,49 +133,6 @@ struct SettingsView: View {
                       subtitle: nil,
                       isOn: $memoryReminders)
         }
-    }
-
-    // MARK: - APPEARANCE
-
-    private var appearanceSection: some View {
-        sectionGroup(title: "APPEARANCE") {
-            HStack(spacing: AppSpacing.m) {
-                iconBadge(icon: "paintpalette.fill", tint: AppColor.secondary)
-                Text("Theme")
-                    .font(.clash(15, weight: .medium))
-                    .foregroundColor(AppColor.ink)
-                Spacer()
-            }
-            .padding(.vertical, 8)
-
-            HStack(spacing: 8) {
-                ForEach(AppearanceMode.allCases) { mode in
-                    appearanceChip(mode)
-                }
-            }
-            .padding(.top, 2)
-        }
-    }
-
-    private func appearanceChip(_ mode: AppearanceMode) -> some View {
-        let selected = appearanceRaw == mode.rawValue
-        return Button {
-            Haptics.selection()
-            appearanceRaw = mode.rawValue
-        } label: {
-            Text(mode.label)
-                .font(.clash(13, weight: .semibold))
-                .foregroundColor(selected ? .white : AppColor.ink)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(
-                    Capsule().fill(selected ? AppColor.primary : Color.white.opacity(0.85))
-                )
-                .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
-                .shadow(color: selected ? AppColor.primary.opacity(0.3) : .black.opacity(0.04),
-                        radius: selected ? 6 : 3, y: 2)
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - ABOUT
