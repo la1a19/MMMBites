@@ -553,21 +553,27 @@ struct AlbumDetailView: View {
     private var freeformMemoryCanvas: some View {
         GeometryReader { proxy in
             let viewportSize = proxy.size
+            let positions = bubblePositions(contentSize: viewportSize)
 
             ZStack(alignment: .topLeading) {
                 Color.clear
                     .contentShape(Rectangle())
 
                 ForEach(Array(filteredMemories.enumerated()), id: \.element.id) { index, memory in
-                    memoryBubble(memory)
-                        .position(bubblePosition(
-                            for: memory,
-                            index: index,
-                            contentSize: viewportSize
-                        ))
-                        .offset(bubbleOffset(for: memory.id))
-                        .zIndex(zIndex(for: memory.id))
-                        .bounceOnAppear(delay: 0.12 + Double(index) * 0.035)
+                    let basePosition = positions[memory.id] ?? .zero
+                    memoryBubble(
+                        memory,
+                        basePosition: basePosition,
+                        contentSize: viewportSize
+                    )
+                    .position(basePosition)
+                    .offset(bubbleOffset(
+                        for: memory.id,
+                        basePosition: basePosition,
+                        contentSize: viewportSize
+                    ))
+                    .zIndex(zIndex(for: memory.id))
+                    .bounceOnAppear(delay: 0.12 + Double(index) * 0.035)
                 }
             }
             // No `.clipped()` here — lets dragged bubbles travel beyond the
