@@ -18,6 +18,7 @@ struct AlbumsView: View {
     @State private var showAddAlbum = false
     @State private var currentPage = 0
     @State private var showGridView = false
+    @State private var showMemoryBoardView = false
     @State private var showProfile = false
     @State private var showSettings = false
     @State private var showFriends = false
@@ -297,7 +298,7 @@ struct AlbumsView: View {
         HStack(spacing: AppSpacing.s) {
             Button {
                 Haptics.tap()
-                withAnimation(AppAnimation.snappy) { showGridView.toggle() }
+                withAnimation(AppAnimation.snappy) { showMemoryBoardView.toggle() }
             } label: {
                 Image(systemName: showGridView ? "rectangle.stack.fill" : "square.grid.2x2.fill")
                     .font(.clash(16, weight: .semibold))
@@ -504,8 +505,8 @@ struct AlbumsView: View {
                 loadingPlaceholder
             } else if filteredAlbums.isEmpty {
                 emptyState
-            } else if showGridView {
-                gridView
+            } else if showMemoryBoardView {
+                MemoryBoardView(memories: viewModel.memories, albums: viewModel.albums)
             } else {
                 carouselView
             }
