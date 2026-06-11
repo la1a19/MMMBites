@@ -14,7 +14,6 @@
 //
 
 import SwiftUI
-import FirebaseFirestore
 
 struct MemoryBoardView: View {
     let memories: [Memory]
@@ -25,13 +24,9 @@ struct MemoryBoardView: View {
 
     @State private var seenReactionMemoryIDs: Set<String> = []
     @State private var bubbleRefreshSeed = 0
+    @State private var memoryOffsets: [String: CGSize] = [:]
 
-    @State private var boardContentVisible = false
-    @State private var isLeavingBoard = false
-    
     private let maximumVisibleBubbles = 28
-    private let boardSize: CGFloat = 2400
-    private let centerID = "board-center-anchor"
 
     private var visibleMemories: [Memory] {
         memories
@@ -47,115 +42,133 @@ struct MemoryBoardView: View {
         max(memories.count - visibleMemories.count, 0)
     }
 
-    private var boardPositions: [String: CGPoint] {
-        generateNonOverlappingPositions(for: visibleMemories)
-    }
-
     var body: some View {
-        ZStack {
-            AppBackground()
-                .opacity(boardContentVisible && !isLeavingBoard ? 1 : 0)
+        GeometryReader { geometry in
+            ZStack {
+                AppBackground()
 
-            ScrollViewReader { proxy in
-                ScrollView([.horizontal, .vertical], showsIndicators: false) {
-                    ZStack(alignment: .topLeading) {
-                        boardBackground
+                ZStack {
+                    boardBackground(size: geometry.size)
 
-                        Color.clear
-                            .frame(width: 1, height: 1)
-                            .position(x: boardSize / 2, y: boardSize / 2)
-                            .id(centerID)
+                    ForEach(Array(visibleMemories.enumerated()), id: \.element.id) { index, memory in
+                        boardMemoryBubble(memory, index: index)
+                            .position(responsiveBoardPosition(
+                                for: memory,
+                                index: index,
+                                in: geometry.size,
+                                seed: bubbleRefreshSeed
+                            ))
+                            .offset(memoryOffsets[memory.id] ?? .zero)
+                            .gesture(
+                                DragGesture()
+                                    .onChanged { value in
+                                        let bubbleSize = photoSize(for: memory.id)
+                                        let allowedOverflow: CGFloat = 20
+                                        let titleHeight: CGFloat = 80 // Estimated height for section header
+                                        
+                                        let maxX = geometry.size.width/2 - bubbleSize/2 + allowedOverflow
+                                        let minX = -geometry.size.width/2 + bubbleSize/2 - allowedOverflow
+                                        let maxY = geometry.size.height/2 - bubbleSize/2 + allowedOverflow
+                                        let minY = -geometry.size.height/2 + bubbleSize/2 + titleHeight - allowedOverflow
+                                        
+                                        let constrainedX = min(max(value.translation.width, minX), maxX)
+                                        let constrainedY = min(max(value.translation.height, minY), maxY)
+                                        
+                                        memoryOffsets[memory.id] = CGSize(width: constrainedX, height: constrainedY)
+                                    }
+                                    .onEnded { value in
+                                        withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                                            memoryOffsets[memory.id] = .zero
+                                        }
+                                        Haptics.soft()
+                                    }
+                            )
+                            .bounceOnAppear(delay: 0.04 + Double(index) * 0.012)
+                    }
+                }
+                .frame(width: geometry.size.width, height: geometry.size.height)
 
-                        ForEach(Array(visibleMemories.enumerated()), id: \.element.id) { index, memory in
-                            boardMemoryBubble(memory, index: index)
-                                .position(boardPositions[memory.id] ?? boardPosition(for: memory, index: index, seed: bubbleRefreshSeed))
-                                .opacity(boardContentVisible && !isLeavingBoard ? 1 : 0)
-                                .scaleEffect(boardContentVisible && !isLeavingBoard ? 1 : 0.86)
-                                .animation(
-                                    .easeInOut(duration: 1.2).delay(Double(index) * 0.035),
-                                    value: boardContentVisible
-                                )
-                                .animation(
-                                    .easeInOut(duration: 0.7).delay(Double(index) * 0.012),
-                                    value: isLeavingBoard
-                                )
-                                .bounceOnAppear(delay: 0.04 + Double(index) * 0.012)
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Button {
+                            Haptics.tap()
+                            withAnimation(AppAnimation.bouncy) {
+                                bubbleRefreshSeed += 1
+                                seenReactionMemoryIDs.removeAll()
+                            }
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(.ultraThinMaterial)
+                                    .frame(width: 60, height: 60)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.white.opacity(0.65), lineWidth: 1.5)
+                                    )
+                                    .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
+                                
+                                VStack(spacing: 2) {
+                                    Image(systemName: "sparkles")
+                                        .font(.clash(16, weight: .bold))
+                                        .foregroundColor(AppColor.primary)
+                                    
+                                    if hiddenMemoryCount > 0 {
+                                        Text("+\(hiddenMemoryCount)")
+                                            .font(.clash(8, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(AppColor.primary, in: Capsule())
+                                    }
+                                }
+                            }
                         }
+                        .buttonStyle(.plain)
+                        .pressableScale(0.95)
                     }
-                    .frame(width: boardSize, height: boardSize)
+                    .padding(.trailing, 30)
+                    .padding(.bottom, 40)
                 }
-                .onAppear {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        proxy.scrollTo(centerID, anchor: .center)
-                    }
-                }
-                .opacity(boardContentVisible && !isLeavingBoard ? 1 : 0)
-            }
-
-            topOverlay
-                .opacity(boardContentVisible && !isLeavingBoard ? 1 : 0)
-
-            bottomOverlay
-                .opacity(boardContentVisible && !isLeavingBoard ? 1 : 0)
-        }
-        .navigationBarBackButtonHidden(true)
-        .onAppear {
-            boardContentVisible = false
-            isLeavingBoard = false
-
-            withAnimation(.easeInOut(duration: 2.0)) {
-                boardContentVisible = true
             }
         }
     }
 
-    private func leaveBoardWithFade() {
-        Haptics.tap()
-
-        withAnimation(.easeInOut(duration: 0.8)) {
-            isLeavingBoard = true
-            boardContentVisible = false
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.82) {
-            dismiss()
-        }
-    }
-    
     // MARK: - Background
 
-    private var boardBackground: some View {
+    private func boardBackground(size: CGSize) -> some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 64, style: .continuous)
-                .fill(Color.white.opacity(0.10))
+            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                .fill(Color.white.opacity(0.08))
 
-            dreamyDotGrid
-
-            Circle()
-                .fill(AppColor.primary.opacity(0.12))
-                .frame(width: 520, height: 520)
-                .blur(radius: 90)
-                .position(x: boardSize / 2, y: boardSize / 2)
+            dreamyDotGrid(size: size)
 
             Circle()
-                .fill(AppColor.secondary.opacity(0.10))
-                .frame(width: 420, height: 420)
-                .blur(radius: 100)
-                .position(x: boardSize * 0.28, y: boardSize * 0.72)
+                .fill(AppColor.primary.opacity(0.15))
+                .frame(width: min(size.width, size.height) * 0.6)
+                .blur(radius: 60)
+                .position(x: size.width / 2, y: size.height / 2)
 
             Circle()
-                .fill(AppColor.accent.opacity(0.10))
-                .frame(width: 460, height: 460)
-                .blur(radius: 100)
-                .position(x: boardSize * 0.78, y: boardSize * 0.25)
+                .fill(AppColor.secondary.opacity(0.12))
+                .frame(width: min(size.width, size.height) * 0.4)
+                .blur(radius: 80)
+                .position(x: size.width * 0.25, y: size.height * 0.75)
+
+            Circle()
+                .fill(AppColor.accent.opacity(0.12))
+                .frame(width: min(size.width, size.height) * 0.45)
+                .blur(radius: 80)
+                .position(x: size.width * 0.75, y: size.height * 0.25)
         }
-        .frame(width: boardSize, height: boardSize)
+        .frame(width: size.width, height: size.height)
     }
 
-    private var dreamyDotGrid: some View {
-        let spacing: CGFloat = 120
-        let columns = Int(boardSize / spacing)
-        let rows = Int(boardSize / spacing)
+    private func dreamyDotGrid(size: CGSize) -> some View {
+        let spacing: CGFloat = max(80, min(size.width, size.height) / 8)
+        let columns = Int(size.width / spacing)
+        let rows = Int(size.height / spacing)
 
         return ZStack {
             ForEach(0...columns, id: \.self) { column in
@@ -196,89 +209,47 @@ struct MemoryBoardView: View {
             )
     }
 
-    // MARK: - Overlay
+    // MARK: - Positioning
 
-    private var topOverlay: some View {
-        VStack {
-            HStack {
-                Button {
-                    leaveBoardWithFade()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.clash(15, weight: .bold))
-                        .foregroundColor(AppColor.ink)
-                        .frame(width: 38, height: 38)
-                        .glassCircleSurface()
-                }
-                .buttonStyle(.plain)
-                .pressableScale()
+    private func responsiveBoardPosition(
+        for memory: Memory,
+        index: Int,
+        in size: CGSize,
+        seed: Int = 0
+    ) -> CGPoint {
+        let bubbleSize = photoSize(for: memory.id)
+        let margin = bubbleSize / 2 + 40
+        let refreshSalt = seed * 1000
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Memory Board")
-                        .font(AppFont.headline)
-                        .foregroundColor(AppColor.ink)
-
-                    Text("\(memories.count) memories")
-                        .font(AppFont.tiny)
-                        .foregroundColor(AppColor.inkMuted)
-                }
-
-                Spacer()
+        // Center the first few memories
+        if index < min(6, visibleMemories.count) {
+            let centerX = size.width / 2
+            let centerY = size.height / 2
+            
+            if index == 0 {
+                return CGPoint(x: centerX, y: centerY)
             }
-            .padding(.horizontal, AppSpacing.xl)
-            .padding(.top, AppSpacing.m)
-
-            Spacer()
+            
+            let radius: CGFloat = min(size.width, size.height) * 0.15 + CGFloat(index % 3) * min(size.width, size.height) * 0.08
+            let angle = stableFraction(for: memory.id, salt: refreshSalt + 91) * .pi * 2
+            
+            let x = centerX + cos(angle) * radius
+            let y = centerY + sin(angle) * radius
+            
+            return CGPoint(
+                x: min(max(x, margin), size.width - margin),
+                y: min(max(y, margin), size.height - margin)
+            )
         }
-    }
-
-    private var bottomOverlay: some View {
-        VStack {
-            Spacer()
-
-            HStack {
-                Spacer()
-
-                Button {
-                    Haptics.tap()
-                    withAnimation(AppAnimation.bouncy) {
-                        bubbleRefreshSeed += 1
-                        seenReactionMemoryIDs.removeAll()
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "sparkles")
-                            .font(.clash(13, weight: .bold))
-
-                        Text("Shuffle board")
-                            .font(.clash(13, weight: .semibold))
-
-                        if hiddenMemoryCount > 0 {
-                            Text("+\(hiddenMemoryCount)")
-                                .font(.clash(11, weight: .bold))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(AppColor.primary, in: Capsule())
-                        }
-                    }
-                    .foregroundColor(AppColor.ink)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 11)
-                    .background(.ultraThinMaterial, in: Capsule(style: .continuous))
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .stroke(Color.white.opacity(0.65), lineWidth: 1)
-                    )
-                    .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
-                }
-                .buttonStyle(.plain)
-                .pressableScale()
-
-                Spacer()
-            }
-            .padding(.bottom, AppSpacing.xl)
-        }
+        
+        // Distribute remaining memories
+        let xRange = size.width - margin * 2
+        let yRange = size.height - margin * 2
+        
+        let x = margin + stableFraction(for: memory.id, salt: refreshSalt + 13) * xRange
+        let y = margin + stableFraction(for: memory.id, salt: refreshSalt + 47) * yRange
+        
+        return CGPoint(x: x, y: y)
     }
 
     // MARK: - Memory Bubble
@@ -291,15 +262,8 @@ struct MemoryBoardView: View {
             MemoryDetailView(
                 memory: memory,
                 albumTitle: album(for: memory)?.title ?? "Memory",
-                album: album(for: memory),
-                onUpdate: { updatedMemory in
-                    updateMemory(updatedMemory)
-                },
-                onDelete: { deletedMemory in
-                    deleteMemory(deletedMemory)
-                }
+                album: album(for: memory)
             )
-            .environmentObject(authViewModel)
         } label: {
             ZStack {
                 if hasUnseenReaction {
@@ -450,179 +414,10 @@ struct MemoryBoardView: View {
         .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
     }
 
-    // MARK: - Firestore
+    // MARK: - Helpers
 
     private func album(for memory: Memory) -> Album? {
         albums.first { $0.id == memory.albumId }
-    }
-
-    private func updateMemory(_ memory: Memory) {
-        var updated = memory
-        updated.updatedAt = Date()
-
-        Task {
-            do {
-                try Firestore.firestore()
-                    .collection("memories")
-                    .document(updated.id)
-                    .setData(from: updated, merge: true)
-            } catch {
-                print("[MemoryBoardView] memory update error: \(error)")
-            }
-        }
-    }
-
-    private func deleteMemory(_ memory: Memory) {
-        Task {
-            do {
-                try await Firestore.firestore()
-                    .collection("memories")
-                    .document(memory.id)
-                    .delete()
-            } catch {
-                print("[MemoryBoardView] memory delete error: \(error)")
-            }
-        }
-    }
-
-    // MARK: - Board Positioning
-
-    private func generateNonOverlappingPositions(for memories: [Memory]) -> [String: CGPoint] {
-        var result: [String: CGPoint] = [:]
-        var placedBubbles: [(id: String, position: CGPoint, radius: CGFloat)] = []
-
-        for (index, memory) in memories.enumerated() {
-            let bubbleRadius = bubbleCollisionRadius(for: memory.id)
-            let position = findNonOverlappingPosition(
-                for: memory,
-                index: index,
-                radius: bubbleRadius,
-                placedBubbles: placedBubbles
-            )
-
-            result[memory.id] = position
-            placedBubbles.append(
-                (
-                    id: memory.id,
-                    position: position,
-                    radius: bubbleRadius
-                )
-            )
-        }
-
-        return result
-    }
-
-    private func findNonOverlappingPosition(
-        for memory: Memory,
-        index: Int,
-        radius: CGFloat,
-        placedBubbles: [(id: String, position: CGPoint, radius: CGFloat)]
-    ) -> CGPoint {
-        let size = photoSize(for: memory.id)
-        let margin = size / 2 + 100
-
-        for attempt in 0..<100 {
-            let candidate = candidateBoardPosition(
-                for: memory,
-                index: index,
-                attempt: attempt,
-                margin: margin
-            )
-
-            let overlaps = placedBubbles.contains { placed in
-                let dx = candidate.x - placed.position.x
-                let dy = candidate.y - placed.position.y
-                let distance = sqrt(dx * dx + dy * dy)
-                return distance < radius + placed.radius
-            }
-
-            if !overlaps {
-                return candidate
-            }
-        }
-
-        return boardPosition(for: memory, index: index, seed: bubbleRefreshSeed)
-    }
-
-    private func candidateBoardPosition(
-        for memory: Memory,
-        index: Int,
-        attempt: Int,
-        margin: CGFloat
-    ) -> CGPoint {
-        let refreshSalt = bubbleRefreshSeed * 1000
-
-        if index < min(6, visibleMemories.count) {
-            let center = boardSize / 2
-            let radius: CGFloat = index == 0 ? 0 : 170 + CGFloat(index % 3) * 95 + CGFloat(attempt) * 18
-            let angle = stableFraction(
-                for: memory.id,
-                salt: refreshSalt + 91 + attempt * 7
-            ) * .pi * 2
-
-            let x = center + cos(angle) * radius
-            let y = center + sin(angle) * radius
-
-            return CGPoint(
-                x: min(max(x, margin), boardSize - margin),
-                y: min(max(y, margin), boardSize - margin)
-            )
-        }
-
-        let xRange = boardSize - margin * 2
-        let yRange = boardSize - margin * 2
-
-        let x = margin + stableFraction(
-            for: memory.id,
-            salt: refreshSalt + 13 + attempt * 19
-        ) * xRange
-
-        let y = margin + stableFraction(
-            for: memory.id,
-            salt: refreshSalt + 47 + attempt * 23
-        ) * yRange
-
-        return CGPoint(x: x, y: y)
-    }
-
-    private func bubbleCollisionRadius(for id: String) -> CGFloat {
-        let photo = photoSize(for: id)
-
-        let randomExtra = stableFraction(
-            for: "\(id)-refresh-\(bubbleRefreshSeed)",
-            salt: 808
-        ) * 42
-
-        return photo / 2 + 6 + randomExtra
-    }
-
-    private func boardPosition(for memory: Memory, index: Int, seed: Int = 0) -> CGPoint {
-        let size = photoSize(for: memory.id)
-        let margin = size / 2 + 80
-        let refreshSalt = seed * 1000
-
-        if index < min(6, visibleMemories.count) {
-            let center = boardSize / 2
-            let radius: CGFloat = index == 0 ? 0 : 150 + CGFloat(index % 3) * 70
-            let angle = stableFraction(for: memory.id, salt: refreshSalt + 91) * .pi * 2
-
-            let x = center + cos(angle) * radius
-            let y = center + sin(angle) * radius
-
-            return CGPoint(
-                x: min(max(x, margin), boardSize - margin),
-                y: min(max(y, margin), boardSize - margin)
-            )
-        }
-
-        let xRange = boardSize - margin * 2
-        let yRange = boardSize - margin * 2
-
-        let x = margin + stableFraction(for: memory.id, salt: refreshSalt + 13) * xRange
-        let y = margin + stableFraction(for: memory.id, salt: refreshSalt + 47) * yRange
-
-        return CGPoint(x: x, y: y)
     }
 
     // MARK: - Stable Random Helpers
