@@ -32,6 +32,7 @@ struct MemoryBoardView: View {
     @State private var lastCanvasOffset: CGSize = .zero
     @State private var canvasScale: CGFloat = 1.0
     @State private var lastCanvasScale: CGFloat = 1.0
+    @State private var shouldShowInteractionHint = false
 
     private let maximumVisibleBubbles = 20
     private let canvasMultiplier: CGFloat = 2.6   // board is 2.6x the screen each axis
@@ -120,6 +121,14 @@ struct MemoryBoardView: View {
             }
             .frame(width: vpW, height: vpH)
             .clipped()
+            .overlay(alignment: .top) {
+                if shouldShowInteractionHint {
+                    boardInteractionHint
+                        .padding(.top, max(20, geometry.safeAreaInsets.top + 10))
+                        .padding(.horizontal, AppSpacing.xl)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                }
+            }
             .overlay(alignment: .bottomTrailing) {
                 Button {
                     Haptics.tap()
@@ -163,6 +172,40 @@ struct MemoryBoardView: View {
                 .pressableScale(0.95)
                 .padding(.trailing, 30)
                 .padding(.bottom, 40)
+            }
+            .onAppear(perform: presentInteractionHintIfNeeded)
+        }
+    }
+
+    private var boardInteractionHint: some View {
+        Text("✨ Pinch to zoom • Drag empty space to pan")
+            .font(AppFont.captionBold)
+            .foregroundColor(AppColor.ink)
+            .lineLimit(2)
+            .multilineTextAlignment(.center)
+            .minimumScaleFactor(0.85)
+            .padding(.horizontal, AppSpacing.l)
+            .padding(.vertical, AppSpacing.m)
+            .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(Color.white.opacity(0.7), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.12), radius: 14, y: 6)
+            .allowsHitTesting(false)
+    }
+
+    private func presentInteractionHintIfNeeded() {
+        guard authViewModel.shouldPresentMemoryBoardInteractionHint() else { return }
+
+        withAnimation(AppAnimation.quick) {
+            shouldShowInteractionHint = true
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_200_000_000)
+            withAnimation(.easeOut(duration: 0.45)) {
+                shouldShowInteractionHint = false
             }
         }
     }

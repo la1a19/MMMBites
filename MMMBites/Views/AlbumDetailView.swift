@@ -26,6 +26,7 @@ struct AlbumDetailView: View {
     @State private var bubbleOffsets: [String: CGSize] = [:]
     @State private var gestureStartOffsets: [String: CGSize] = [:]
     @State private var navigationMemoryID: String?
+    @State private var showDeleteAlbumConfirmation = false
 
     // Miro-style canvas pan / zoom state
     @State private var canvasOffset: CGSize = .zero
@@ -249,8 +250,7 @@ struct AlbumDetailView: View {
 
                         Button(role: .destructive) {
                             Haptics.warning()
-                            onAlbumDelete?(album)
-                            dismiss()
+                            showDeleteAlbumConfirmation = true
                         } label: {
                             Label("Delete album", systemImage: "trash")
                         }
@@ -277,6 +277,16 @@ struct AlbumDetailView: View {
                     onAlbumUpdate?(updatedAlbum)
                 }
             }
+        }
+        .alert("Delete album?", isPresented: $showDeleteAlbumConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                Haptics.warning()
+                onAlbumDelete?(album)
+                dismiss()
+            }
+        } message: {
+            Text("This will permanently delete \"\(album.title)\" and all \(memories.count) memor\(memories.count == 1 ? "y" : "ies") in it. This can't be undone.")
         }
         .task(id: album.id) {
             memoriesViewModel.startListening(forAlbumID: album.id)

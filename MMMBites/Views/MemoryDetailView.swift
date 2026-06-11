@@ -26,6 +26,7 @@ struct MemoryDetailView: View {
     @State private var showEmojiPicker = false
     @State private var showNoteEditor = false
     @State private var favouriteBurst = false
+    @State private var showDeleteMemoryConfirmation = false
 
     @State private var friendUsers: [User] = []
 
@@ -192,8 +193,7 @@ struct MemoryDetailView: View {
                     if canEditMemory {
                         Button(role: .destructive) {
                             Haptics.warning()
-                            onDelete?(memory)
-                            dismiss()
+                            showDeleteMemoryConfirmation = true
                         } label: {
                             Label("Delete memory", systemImage: "trash")
                         }
@@ -243,6 +243,16 @@ struct MemoryDetailView: View {
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+        .alert("Delete memory?", isPresented: $showDeleteMemoryConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                Haptics.warning()
+                onDelete?(memory)
+                dismiss()
+            }
+        } message: {
+            Text("This will permanently delete \"\(memory.title)\". This can't be undone.")
         }
         .task(id: friendsLoadKey) {
             await loadFriends()

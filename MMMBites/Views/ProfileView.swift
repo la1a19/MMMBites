@@ -524,6 +524,7 @@ struct FriendsSheet: View {
     @State private var showMyQRCode = false
     @State private var showQRScanner = false
     @State private var showCameraPermissionAlert = false
+    @State private var friendPendingRemoval: User?
 
     private var currentUserID: String? { viewModel.currentUser?.id }
 
@@ -614,6 +615,26 @@ struct FriendsSheet: View {
             }
         } message: {
             Text("Allow camera access in Settings to scan friend QR codes.")
+        }
+        .alert(
+            "Remove friend?",
+            isPresented: Binding(
+                get: { friendPendingRemoval != nil },
+                set: { if !$0 { friendPendingRemoval = nil } }
+            ),
+            presenting: friendPendingRemoval
+        ) { friend in
+            Button("Cancel", role: .cancel) { }
+            Button("Remove", role: .destructive) {
+                Haptics.warning()
+                let friendToRemove = friend
+                Task {
+                    await viewModel.removeFriend(friendToRemove)
+                    friends.removeAll { $0.id == friendToRemove.id }
+                }
+            }
+        } message: { friend in
+            Text("You and \(friend.username) will no longer be friends. Shared memories stay, but you won't see new ones from each other.")
         }
     }
 
@@ -974,10 +995,7 @@ struct FriendsSheet: View {
                 }
                 Button(role: .destructive) {
                     Haptics.warning()
-                    Task {
-                        await viewModel.removeFriend(friend)
-                        friends.removeAll { $0.id == friend.id }
-                    }
+                    friendPendingRemoval = friend
                 } label: {
                     Label("Remove friend", systemImage: "person.fill.xmark")
                 }

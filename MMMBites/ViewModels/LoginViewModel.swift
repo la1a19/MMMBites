@@ -28,6 +28,8 @@ class LoginViewModel: ObservableObject {
     private var authStateHandle: AuthStateDidChangeListenerHandle?
     private var incomingRequestListener: ListenerRegistration?
     private var outgoingRequestListener: ListenerRegistration?
+    private var activeSessionUserID: String?
+    private var memoryBoardHintSeenUserIDsForSession: Set<String> = []
     private let database = Firestore.firestore()
 
     init() {
@@ -37,15 +39,32 @@ class LoginViewModel: ObservableObject {
             Task { @MainActor in
                 self?.isLoggedIn = (user != nil)
                 if let uid = user?.uid {
+                    self?.startLoginSessionIfNeeded(for: uid)
                     await self?.fetchCurrentUser(uid: uid)
                     self?.startFriendRequestListeners(for: uid)
                 } else {
+                    self?.activeSessionUserID = nil
+                    self?.memoryBoardHintSeenUserIDsForSession.removeAll()
                     self?.currentUser = nil
                     self?.friendSearchResults = []
                     self?.stopFriendRequestListeners()
                 }
             }
         }
+    }
+
+    private func startLoginSessionIfNeeded(for userID: String) {
+        guard activeSessionUserID != userID else { return }
+        activeSessionUserID = userID
+        memoryBoardHintSeenUserIDsForSession.removeAll()
+    }
+
+    func shouldPresentMemoryBoardInteractionHint() -> Bool {
+        guard let userID = currentUser?.id ?? activeSessionUserID else { return false }
+        guard !memoryBoardHintSeenUserIDsForSession.contains(userID) else { return false }
+
+        memoryBoardHintSeenUserIDsForSession.insert(userID)
+        return true
     }
 
     private func fetchCurrentUser(uid: String) async {
