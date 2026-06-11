@@ -21,30 +21,37 @@ struct WelcomeView: View {
 
                     // Hero logo
                     VStack(spacing: AppSpacing.l) {
-                        // Editorial monogram — elegant serif M inside a soft halo
+                        // Editorial brand mark — fork logo embedded in a soft halo
                         ZStack {
+                            // Outer ambient bloom
+                            Circle()
+                                .fill(
+                                    RadialGradient(
+                                        colors: [
+                                            AppColor.primary.opacity(0.45),
+                                            AppColor.primary.opacity(0.0)
+                                        ],
+                                        center: .center,
+                                        startRadius: 0,
+                                        endRadius: 110
+                                    )
+                                )
+                                .frame(width: 220, height: 220)
+                                .blur(radius: 28)
+
+                            // Inner warm glow
                             Circle()
                                 .fill(AppGradient.hero)
-                                .frame(width: 150, height: 150)
-                                .blur(radius: 24)
-                                .opacity(0.55)
+                                .frame(width: 130, height: 130)
+                                .blur(radius: 22)
+                                .opacity(0.5)
 
-                            Circle()
-                                .stroke(
-                                    LinearGradient(
-                                        colors: [Color.white.opacity(0.9), Color.white.opacity(0.15)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    ),
-                                    lineWidth: 1
-                                )
-                                .frame(width: 116, height: 116)
-
-                            Text("M")
-                                .font(.clash(72, weight: .light))
-                                .italic()
-                                .foregroundStyle(AppGradient.hero)
-                                .tracking(-2)
+                            // Logo with transparent background, sits inside the halo
+                            Image("mmmbiteLogo")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 110, height: 110)
+                                .shadow(color: AppColor.primary.opacity(0.22), radius: 14, y: 8)
                         }
                         .scaleEffect(animateLogo ? 1.0 : 0.7)
                         .opacity(animateLogo ? 1 : 0)
