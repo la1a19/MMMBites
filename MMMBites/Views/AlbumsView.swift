@@ -18,6 +18,7 @@ struct AlbumsView: View {
     @State private var showAddAlbum = false
     @State private var currentPage = 0
     @State private var showGridView = false
+    @State private var showMemoryBoardView = false
     @State private var showProfile = false
     @State private var showSettings = false
     @State private var showFriends = false
@@ -297,9 +298,11 @@ struct AlbumsView: View {
         HStack(spacing: AppSpacing.s) {
             Button {
                 Haptics.tap()
-                withAnimation(AppAnimation.snappy) { showGridView.toggle() }
+                withAnimation(AppAnimation.snappy) { 
+                    showMemoryBoardView.toggle() 
+                }
             } label: {
-                Image(systemName: showGridView ? "rectangle.stack.fill" : "square.grid.2x2.fill")
+                Image(systemName: showMemoryBoardView ? "circle.grid.2x2.fill" : "square.grid.2x2.fill")
                     .font(.clash(16, weight: .semibold))
                     .foregroundColor(AppColor.ink)
                     .frame(width: 38, height: 38)
@@ -481,11 +484,18 @@ struct AlbumsView: View {
 
     private var sectionHeader: some View {
         HStack(alignment: .center) {
-            Text(showGridView ? "Album Grid" : "Bite Bubbles")
+            Text(showMemoryBoardView ? "Memory Board" : "Bite Bubbles")
                 .font(AppFont.titleSmall)
                 .foregroundColor(AppColor.ink)
             Spacer()
-            if !filteredAlbums.isEmpty {
+            if showMemoryBoardView {
+                Text("\(viewModel.memories.count)")
+                    .font(AppFont.captionBold)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(AppGradient.hero))
+            } else if !filteredAlbums.isEmpty {
                 Text("\(filteredAlbums.count)")
                     .font(AppFont.captionBold)
                     .foregroundColor(.white)
@@ -504,8 +514,12 @@ struct AlbumsView: View {
                 loadingPlaceholder
             } else if filteredAlbums.isEmpty {
                 emptyState
-            } else if showGridView {
-                gridView
+            } else if showMemoryBoardView {
+                MemoryBoardView(
+                    memories: viewModel.memories,
+                    albums: viewModel.albums
+                )
+                .environmentObject(authViewModel)
             } else {
                 carouselView
             }
