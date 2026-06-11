@@ -148,28 +148,31 @@ struct AddAlbumView: View {
                 counterLabel(count: title.count, limit: AlbumFieldLimits.title)
                     .padding(.trailing, 6)
             }
-            TextField("Enter album name", text: $title)
-                .font(AppFont.body)
-                .autocorrectionDisabled(true)
-                .textContentType(nil)
-                .textInputAutocapitalization(.characters)
-                .onChange(of: title) { _, newValue in
-                    var next = newValue.uppercased()
-                    if next.count > AlbumFieldLimits.title {
-                        next = String(next.prefix(AlbumFieldLimits.title))
+            HStack(spacing: 8) {
+                TextField("Enter album name", text: $title)
+                    .font(AppFont.body)
+                    .autocorrectionDisabled(true)
+                    .textContentType(nil)
+                    .textInputAutocapitalization(.characters)
+                    .onChange(of: title) { _, newValue in
+                        var next = newValue.uppercased()
+                        if next.count > AlbumFieldLimits.title {
+                            next = String(next.prefix(AlbumFieldLimits.title))
+                        }
+                        if title != next {
+                            title = next
+                        }
                     }
-                    if title != next {
-                        title = next
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                .background(Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
-                        .stroke(Color.white.opacity(0.6), lineWidth: 1)
-                )
-                .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
+                FieldClearButton(text: $title)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
+                    .stroke(Color.white.opacity(0.6), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
         }
         .padding(.horizontal, 24)
     }
@@ -205,6 +208,7 @@ struct AddAlbumView: View {
                         selectedLongitude = nil
                         locationSearch.update(query: newValue)
                     }
+                FieldClearButton(text: $location)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -470,6 +474,11 @@ struct AddAlbumView: View {
                         }
                     }
             }
+            .overlay(alignment: .topTrailing) {
+                FieldClearButton(text: $description)
+                    .padding(.top, 10)
+                    .padding(.trailing, 10)
+            }
             .background(Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
@@ -528,19 +537,6 @@ struct AddAlbumView: View {
                 Circle()
                     .stroke(Color.white.opacity(0.8), lineWidth: 3)
                     .frame(width: 240, height: 240)
-
-                // Edit (pencil) overlay
-                Circle()
-                    .fill(AppGradient.hero)
-                    .frame(width: 76, height: 76)
-                    .overlay(
-                        Image(systemName: "square.and.pencil")
-                            .font(.clash(28, weight: .semibold))
-                            .foregroundColor(.white)
-                    )
-                    .overlay(Circle().stroke(Color.white, lineWidth: 3))
-                    .shadow(color: AppColor.primary.opacity(0.45), radius: 12, y: 6)
-                    .offset(x: 70, y: 70)
             }
         }
         .buttonStyle(.plain)
@@ -567,6 +563,8 @@ struct AddAlbumView: View {
                         searchText = String(newValue.prefix(AlbumFieldLimits.tag))
                     }
                 }
+
+            FieldClearButton(text: $searchText)
 
             Button {
                 addTagFromSearch()

@@ -604,9 +604,25 @@ struct AlbumsView: View {
                 .tracking(0.5)
                 .foregroundColor(AppColor.ink)
 
+            albumStatsLine(for: album)
+
             ownerByLine(for: album, size: 14, compact: true)
         }
         .padding(.vertical, AppSpacing.m)
+    }
+
+    // Compact one-liner stats — used on each album card so the detail page
+    // doesn't have to repeat the same numbers.
+    private func albumStatsLine(for album: Album) -> some View {
+        let scoped = viewModel.memories.filter { $0.albumId == album.id }
+        let memoryCount = scoped.count
+        let reactionCount = scoped.reduce(0) { $0 + $1.reactions.count }
+        let friendCount = Set(scoped.flatMap { $0.participantIds }).count
+
+        return Text("\(memoryCount) memories · \(reactionCount) reactions · \(friendCount) friends")
+            .font(AppFont.caption)
+            .foregroundColor(AppColor.inkFaint)
+            .lineLimit(1)
     }
 
     // Frame 1 — just the photo circle (swipeable)
@@ -699,11 +715,13 @@ struct AlbumsView: View {
 
     // Frame 2 — separate info card (title + tags) shown below the photo
     private func albumInfoCard(_ album: Album) -> some View {
-        VStack(spacing: AppSpacing.m) {
+        VStack(spacing: AppSpacing.s) {
             Text(album.title)
                 .font(.clash(26, weight: .medium))
                 .tracking(1)
                 .foregroundColor(AppColor.ink)
+
+            albumStatsLine(for: album)
 
             ownerByLine(for: album, size: 20)
 

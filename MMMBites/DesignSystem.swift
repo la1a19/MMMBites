@@ -13,38 +13,41 @@ import UIKit
 // MARK: - Brand palette
 
 enum AppColor {
-    // Brand palette — warm food-app tones (peach-coral + honey-apricot + cream).
-    // Sampled from the AddAlbumView warm screen so every surface lives in the same family.
-    static let primary    = Color(red: 233 / 255, green: 146 / 255, blue: 117 / 255)   // #E99275  soft peach-coral
-    static let secondary  = Color(red: 246 / 255, green: 209 / 255, blue: 175 / 255)   // #F6D1AF  honey apricot
-    static let background = Color(red: 255 / 255, green: 244 / 255, blue: 232 / 255)   // #FFF4E8  warm cream
-    static let accent     = primary
+    // Primary brand
+    static let primary    = Color(red: 0.96, green: 0.49, blue: 0.42)   // warm coral
+    static let secondary  = Color(red: 0.55, green: 0.45, blue: 0.92)   // soft lavender
+    static let accent     = Color(red: 0.99, green: 0.78, blue: 0.36)   // golden honey
+    static let background = Color.white
 
     // Surfaces
-    static let surface    = background
-    static let surfaceMuted = background.opacity(0.55)
-    static let surfaceGlass = background.opacity(0.7)
+    static let surface    = Color.white
+    static let surfaceMuted = Color.white.opacity(0.55)
+    static let surfaceGlass = Color.white.opacity(0.7)
 
-    // Ink (text) — warmer, darker tones for readable contrast on cream surfaces
-    static let ink        = Color(red: 0.12, green: 0.09, blue: 0.07)                  // #1F1812  warm near-black
-    static let inkMuted   = Color(red: 0.34, green: 0.28, blue: 0.23)                  // #57483B  warm brown-gray
-    static let inkFaint   = Color(red: 0.55, green: 0.47, blue: 0.40)                  // #8C7866  readable warm gray
+    // Ink (text)
+    static let ink        = Color(red: 0.10, green: 0.10, blue: 0.14)
+    static let inkMuted   = Color(red: 0.34, green: 0.36, blue: 0.42)
+    static let inkFaint   = Color(red: 0.56, green: 0.58, blue: 0.63)
 
-    // Pastel background stops — every stop comes from primary/secondary so
-    // all screens share the same peach + honey + cream family.
-    static let bgMint     = secondary                  // honey apricot
-    static let bgCream    = background                 // warm cream
-    static let bgSky      = secondary.opacity(0.75)    // softer honey
-    static let bgBlush    = primary.opacity(0.55)      // dusty peach wash
-    static let bgLilac    = primary.opacity(0.32)      // faint peach
+    // Pastel background stops
+    static let bgMint     = Color(red: 0.81, green: 0.93, blue: 0.91)
+    static let bgCream    = Color(red: 0.98, green: 0.94, blue: 0.80)
+    static let bgSky      = Color(red: 0.80, green: 0.91, blue: 0.99)
+    static let bgBlush    = Color(red: 0.99, green: 0.86, blue: 0.88)
+    static let bgLilac    = Color(red: 0.90, green: 0.86, blue: 0.99)
 
     // Tag palette
     static func tag(_ tag: String) -> Color {
         switch tag.lowercased() {
-        case "tree", "nature", "fancy", "family": return primary
-        case "picnic", "sea", "summer", "fun": return secondary
-        case "street food", "good view": return primary.opacity(0.85)
-        default: return secondary.opacity(0.9)
+        case "tree", "nature":    return Color(red: 0.40, green: 0.74, blue: 0.51)
+        case "picnic":            return Color(red: 0.96, green: 0.62, blue: 0.30)
+        case "fancy":             return Color(red: 0.98, green: 0.78, blue: 0.34)
+        case "family":            return Color(red: 0.95, green: 0.55, blue: 0.70)
+        case "sea", "summer":     return Color(red: 0.34, green: 0.71, blue: 0.92)
+        case "fun":               return Color(red: 0.94, green: 0.47, blue: 0.60)
+        case "street food":       return Color(red: 0.70, green: 0.45, blue: 0.95)
+        case "good view":         return Color(red: 0.36, green: 0.65, blue: 0.96)
+        default:                  return Color(red: 0.62, green: 0.62, blue: 0.72)
         }
     }
 }
@@ -52,18 +55,14 @@ enum AppColor {
 // MARK: - Gradients
 
 enum AppGradient {
-    // Cool screens lead with honey, fade to cream, finish with a touch of peach so
-    // they feel like a softer sibling of the warm gradient instead of a separate palette.
     static let background = LinearGradient(
-        colors: [AppColor.bgMint, AppColor.bgCream, AppColor.bgLilac],
+        colors: [AppColor.bgMint, AppColor.bgCream, AppColor.bgSky],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
-    // Warm screens lead with peach, fade to cream, finish with honey — same family,
-    // flipped emphasis. Matches the AddAlbumView reference look.
     static let backgroundWarm = LinearGradient(
-        colors: [AppColor.bgBlush, AppColor.bgCream, AppColor.bgMint],
+        colors: [AppColor.bgBlush, AppColor.bgCream, AppColor.bgLilac],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
@@ -77,6 +76,8 @@ enum AppGradient {
         endPoint: .bottomTrailing
     )
 
+    // Coral → lavender → coral fade — used by the WelcomeView monogram,
+    // CTA capsule, and Sign up link.
     static let hero = LinearGradient(
         colors: [
             AppColor.primary,
@@ -87,15 +88,12 @@ enum AppGradient {
         endPoint: .bottomTrailing
     )
 
-    /// Darker, readable variant of `hero` used as a text/icon fill on cream surfaces.
-    /// The bright peach/honey `hero` works fine as a button or avatar background,
-    /// but as a text foreground it disappears into the warm background — this stays
-    /// in the same roasted/terracotta family while passing AA contrast on cream.
+    /// Darker, readable variant used as a text/icon fill on pastel surfaces.
     static let heroText = LinearGradient(
         colors: [
-            Color(red: 178 / 255, green:  86 / 255, blue:  56 / 255),  // #B25638 deep terracotta
-            Color(red: 200 / 255, green: 110 / 255, blue:  70 / 255),  // #C86E46 burnt amber
-            Color(red: 152 / 255, green:  70 / 255, blue:  50 / 255)   // #984632 roast sienna
+            AppColor.primary,
+            AppColor.secondary,
+            AppColor.primary.opacity(0.85)
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
@@ -243,6 +241,31 @@ enum Haptics {
         #if canImport(UIKit)
         UISelectionFeedbackGenerator().selectionChanged()
         #endif
+    }
+}
+
+// MARK: - Reusable views
+
+/// Trailing X button that clears a text binding when the field is not empty.
+struct FieldClearButton: View {
+    @Binding var text: String
+
+    var body: some View {
+        Group {
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                    Haptics.tap()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundColor(AppColor.inkFaint.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .transition(.opacity)
+            }
+        }
+        .animation(AppAnimation.snappy, value: text.isEmpty)
     }
 }
 

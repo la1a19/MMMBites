@@ -9,6 +9,7 @@
 import SwiftUI
 import PhotosUI
 import MapKit
+import AVFoundation
 import FirebaseAuth
 import FirebaseFirestore
 
@@ -51,6 +52,7 @@ struct AddMemoryView: View {
     @State private var showPhotoSourceDialog = false
     @State private var showPhotoLibraryPicker = false
     @State private var showCameraPicker = false
+    @State private var showCameraPermissionAlert = false
 
     // Real friends loaded from Firestore for the picker / display.
     @State private var friendUsers: [User] = []
@@ -88,71 +90,8 @@ struct AddMemoryView: View {
             AppBackground(variant: .warm)
 
             ScrollView {
-                VStack(spacing: AppSpacing.xl) {
-
-                    groupHeader("THE BASICS", subtitle: "What, when, and where")
-                        .bounceOnAppear()
-
-                    titleField
-                        .bounceOnAppear(delay: 0.02)
-
-                    photosField
-                        .bounceOnAppear(delay: 0.04)
-
-                    VStack(alignment: .leading, spacing: AppSpacing.m) {
-                        HStack(alignment: .top, spacing: AppSpacing.m) {
-                            dateSection
-                            locationSection
-                        }
-
-                        if showDatePicker {
-                            datePickerPopup
-                                .transition(.opacity.combined(with: .move(edge: .top)))
-                        }
-
-                        if let suggestion = locationSuggestionMemory {
-                            locationHintCard(for: suggestion)
-                                .transition(.opacity.combined(with: .move(edge: .top)))
-                        }
-                    }
-                    .animation(AppAnimation.snappy, value: locationSuggestionMemory?.id)
-                    .bounceOnAppear(delay: 0.06)
-
-                    groupHeader("THE STORY", subtitle: "What made it stick with you")
-                        .padding(.top, AppSpacing.s)
-                        .bounceOnAppear(delay: 0.08)
-
-                    moodSection
-                        .bounceOnAppear(delay: 0.1)
-
-                    bestBiteSection
-                        .bounceOnAppear(delay: 0.12)
-
-                    memorableSection
-                        .bounceOnAppear(delay: 0.14)
-
-                    peopleSection
-                        .bounceOnAppear(delay: 0.16)
-
-                    optionalDetailsToggle
-                        .bounceOnAppear(delay: 0.18)
-
-                    if showOptionalDetails {
-                        noteSection
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                            .bounceOnAppear(delay: 0.2)
-                    }
-
-                    PrimaryButton(
-                        title: isEditing ? "Save changes" : "Save Memory",
-                        icon: isEditing ? "checkmark" : "sparkles"
-                    ) {
-                        save()
-                    }
-                    .padding(.top, 4)
-                    .bounceOnAppear(delay: 0.3)
-                }
-                .padding(AppSpacing.xl)
+                memoryFormContent
+                    .padding(AppSpacing.xl)
             }
             .scrollDismissesKeyboard(.interactively)
         }
@@ -190,7 +129,7 @@ struct AddMemoryView: View {
         }
         .confirmationDialog("Add a photo", isPresented: $showPhotoSourceDialog, titleVisibility: .visible) {
             Button("Take Photo") {
-                showCameraPicker = true
+                requestCameraAccessForPhoto()
             }
             Button("Choose from Library") {
                 showPhotoLibraryPicker = true
@@ -215,6 +154,89 @@ struct AddMemoryView: View {
                 Haptics.success()
             }
             .ignoresSafeArea()
+        }
+        .alert("Camera access needed", isPresented: $showCameraPermissionAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Open Settings") {
+                openAppSettings()
+            }
+        } message: {
+            Text("Allow camera access in Settings to take photos for your meal memories.")
+        }
+    }
+
+    private var memoryFormContent: some View {
+        VStack(spacing: AppSpacing.xl) {
+            groupHeader("THE BASICS", subtitle: "What, when, and where")
+                .bounceOnAppear()
+
+            titleField
+                .bounceOnAppear(delay: 0.02)
+
+            photosField
+                .bounceOnAppear(delay: 0.04)
+
+            dateLocationSection
+                .bounceOnAppear(delay: 0.06)
+
+            groupHeader("THE STORY", subtitle: "What made it stick with you")
+                .padding(.top, AppSpacing.s)
+                .bounceOnAppear(delay: 0.08)
+
+            moodSection
+                .bounceOnAppear(delay: 0.1)
+
+            bestBiteSection
+                .bounceOnAppear(delay: 0.12)
+
+            memorableSection
+                .bounceOnAppear(delay: 0.14)
+
+            peopleSection
+                .bounceOnAppear(delay: 0.16)
+
+            optionalDetailsToggle
+                .bounceOnAppear(delay: 0.18)
+
+            optionalNoteSection
+
+            PrimaryButton(
+                title: isEditing ? "Save changes" : "Save Memory",
+                icon: isEditing ? "checkmark" : "sparkles"
+            ) {
+                save()
+            }
+            .padding(.top, 4)
+            .bounceOnAppear(delay: 0.3)
+        }
+    }
+
+    private var dateLocationSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.m) {
+            HStack(alignment: .top, spacing: AppSpacing.m) {
+                dateSection
+                locationSection
+            }
+
+            if showDatePicker {
+                datePickerPopup
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            if let suggestion = locationSuggestionMemory {
+                locationHintCard(for: suggestion)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(AppAnimation.snappy, value: locationSuggestionMemory?.id)
+    }
+
+    @ViewBuilder
+    private var optionalNoteSection: some View {
+        if showOptionalDetails {
+            noteSection
+                .transition(.opacity.combined(with: .move(edge: .top)))
+                .bounceOnAppear(delay: 0.2)
         }
     }
 
@@ -377,6 +399,40 @@ struct AddMemoryView: View {
         }
     }
 
+    private func requestCameraAccessForPhoto() {
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+            showPhotoLibraryPicker = true
+            return
+        }
+
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            showCameraPicker = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                Task { @MainActor in
+                    if granted {
+                        showCameraPicker = true
+                    } else {
+                        Haptics.warning()
+                        showCameraPermissionAlert = true
+                    }
+                }
+            }
+        case .denied, .restricted:
+            Haptics.warning()
+            showCameraPermissionAlert = true
+        @unknown default:
+            Haptics.warning()
+            showCameraPermissionAlert = true
+        }
+    }
+
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+    }
+
     private func loadPickedPhotos(_ items: [PhotosPickerItem]) async {
         guard !items.isEmpty else { return }
 
@@ -408,19 +464,22 @@ struct AddMemoryView: View {
                 Spacer()
                 counterLabel(count: title.count, limit: MemoryFieldLimits.title)
             }
-            TextField("e.g. Sunday roast with the girls", text: $title)
-                .font(.clash(20, weight: .semibold))
-                .multilineTextAlignment(.center)
-                .autocorrectionDisabled(true)
-                .textContentType(nil)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                .fieldSurface()
-                .onChange(of: title) { _, newValue in
-                    if newValue.count > MemoryFieldLimits.title {
-                        title = String(newValue.prefix(MemoryFieldLimits.title))
+            HStack(spacing: 8) {
+                TextField("e.g. Sunday roast with the girls", text: $title)
+                    .font(.clash(20, weight: .semibold))
+                    .multilineTextAlignment(.center)
+                    .autocorrectionDisabled(true)
+                    .textContentType(nil)
+                    .onChange(of: title) { _, newValue in
+                        if newValue.count > MemoryFieldLimits.title {
+                            title = String(newValue.prefix(MemoryFieldLimits.title))
+                        }
                     }
-                }
+                FieldClearButton(text: $title)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .fieldSurface()
         }
     }
 
@@ -530,6 +589,7 @@ struct AddMemoryView: View {
                         selectedLongitude = nil
                         locationSearch.update(query: newValue)
                     }
+                FieldClearButton(text: $location)
                 Spacer(minLength: 0)
             }
             .frame(minHeight: 22)
@@ -850,6 +910,8 @@ struct AddMemoryView: View {
                     }
                 }
 
+            FieldClearButton(text: $memorableTagSearchText)
+
             Button {
                 addMemorableFromSearch()
                 Haptics.soft()
@@ -989,6 +1051,7 @@ struct AddMemoryView: View {
                             bestBite = String(newValue.prefix(MemoryFieldLimits.bestBite))
                         }
                     }
+                FieldClearButton(text: $bestBite)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
@@ -1124,6 +1187,11 @@ struct AddMemoryView: View {
                             note = String(newValue.prefix(MemoryFieldLimits.note))
                         }
                     }
+            }
+            .overlay(alignment: .topTrailing) {
+                FieldClearButton(text: $note)
+                    .padding(.top, 10)
+                    .padding(.trailing, 10)
             }
             .fieldSurface()
         }

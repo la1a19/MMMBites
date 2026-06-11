@@ -30,7 +30,6 @@ struct ProfileView: View {
     @State private var photoPickerItem: PhotosPickerItem?
     @State private var showFriendsSheet = false
     @State private var showNotificationsInfo = false
-    @State private var showPrivacyInfo = false
     @State private var showRecap = false
     @State private var friendNamesByID: [String: String] = [:]
 
@@ -163,11 +162,6 @@ struct ProfileView: View {
                                       tint: AppColor.secondary) {
                                 showNotificationsInfo = true
                             }
-                            actionRow(icon: "lock.fill",
-                                      label: "Privacy",
-                                      tint: AppColor.primary) {
-                                showPrivacyInfo = true
-                            }
                             actionRow(icon: "rectangle.portrait.and.arrow.right",
                                       label: "Log out",
                                       tint: .red,
@@ -230,15 +224,6 @@ struct ProfileView: View {
                     title: "Notifications",
                     icon: "bell.fill",
                     message: "Friend reactions and shared album updates will appear here when activity tracking is added."
-                )
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
-            }
-            .sheet(isPresented: $showPrivacyInfo) {
-                ComingSoonSheet(
-                    title: "Privacy",
-                    icon: "lock.fill",
-                    message: "Album visibility and sharing controls will live here once privacy settings are wired to Firestore."
                 )
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
@@ -520,6 +505,7 @@ struct FriendsSheet: View {
     @State private var selectedFriend: User?
     @State private var showMyQRCode = false
     @State private var showQRScanner = false
+    @State private var showCameraPermissionAlert = false
 
     private var currentUserID: String? { viewModel.currentUser?.id }
 
@@ -594,6 +580,14 @@ struct FriendsSheet: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
+        .alert("Camera access needed", isPresented: $showCameraPermissionAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Open Settings") {
+                openAppSettings()
+            }
+        } message: {
+            Text("Allow camera access in Settings to scan friend QR codes.")
+        }
     }
 
     // MARK: - Search bar
@@ -638,9 +632,38 @@ struct FriendsSheet: View {
                 showMyQRCode = true
             }
             qrChip(icon: "qrcode.viewfinder", title: "Scan QR", tint: AppColor.primary) {
-                showQRScanner = true
+                requestCameraAccessForQRScan()
             }
         }
+    }
+
+    private func requestCameraAccessForQRScan() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            showQRScanner = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                Task { @MainActor in
+                    if granted {
+                        showQRScanner = true
+                    } else {
+                        Haptics.warning()
+                        showCameraPermissionAlert = true
+                    }
+                }
+            }
+        case .denied, .restricted:
+            Haptics.warning()
+            showCameraPermissionAlert = true
+        @unknown default:
+            Haptics.warning()
+            showCameraPermissionAlert = true
+        }
+    }
+
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
     }
 
     private func qrChip(icon: String, title: String, tint: Color, action: @escaping () -> Void) -> some View {
