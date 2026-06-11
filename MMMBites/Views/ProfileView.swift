@@ -181,7 +181,21 @@ struct ProfileView: View {
             }
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        Haptics.tap()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.clash(14, weight: .bold))
+                            .foregroundColor(AppColor.ink)
+                            .frame(width: 32, height: 32)
+                            .glassCircleSurface()
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Haptics.tap()
@@ -545,7 +559,16 @@ struct FriendsSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button {
+                        Haptics.tap()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.clash(13, weight: .bold))
+                            .foregroundColor(AppColor.ink)
+                            .frame(width: 32, height: 32)
+                            .glassCircleSurface()
+                    }
                 }
             }
         }
@@ -1134,8 +1157,15 @@ private struct MyFriendQRCodeSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
+                    Button {
+                        Haptics.tap()
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.clash(13, weight: .bold))
+                            .foregroundColor(AppColor.ink)
+                            .frame(width: 32, height: 32)
+                            .glassCircleSurface()
                     }
                 }
             }
@@ -1185,8 +1215,15 @@ private struct QRScannerSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
+                    Button {
+                        Haptics.tap()
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.clash(13, weight: .bold))
+                            .foregroundColor(AppColor.ink)
+                            .frame(width: 32, height: 32)
+                            .glassCircleSurface()
                     }
                 }
             }
@@ -1410,8 +1447,15 @@ private struct FriendMemoriesSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
+                    Button {
+                        Haptics.tap()
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.clash(13, weight: .bold))
+                            .foregroundColor(AppColor.ink)
+                            .frame(width: 32, height: 32)
+                            .glassCircleSurface()
                     }
                 }
             }

@@ -105,7 +105,21 @@ struct AddAlbumView: View {
         }
         .navigationTitle(isEditing ? "Edit Album" : "New Album")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    Haptics.tap()
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.clash(14, weight: .bold))
+                        .foregroundColor(AppColor.ink)
+                        .frame(width: 32, height: 32)
+                        .glassCircleSurface()
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     Haptics.tap()
@@ -916,12 +930,17 @@ struct FriendPickerSheet: View {
             .navigationTitle("Tag Friends")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         Haptics.tap()
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.clash(13, weight: .bold))
+                            .foregroundColor(AppColor.ink)
+                            .frame(width: 32, height: 32)
+                            .glassCircleSurface()
                     }
-                    .fontWeight(.semibold)
                 }
             }
         }

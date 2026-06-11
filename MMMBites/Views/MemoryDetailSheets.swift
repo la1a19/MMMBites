@@ -127,13 +127,19 @@ struct MemoryEmojiPickerSheet: View {
             }
             .navigationTitle("Add Reaction")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
+                    Button {
                         Haptics.tap()
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.clash(13, weight: .bold))
+                            .foregroundColor(AppColor.ink)
+                            .frame(width: 32, height: 32)
+                            .glassCircleSurface()
                     }
-                    .fontWeight(.semibold)
                 }
             }
         }
@@ -185,19 +191,32 @@ struct MemoryNoteEditorSheet: View {
             }
             .navigationTitle(isEdit ? "Edit Note" : "Add Note")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
+                    Button {
                         Haptics.tap()
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.clash(13, weight: .bold))
+                            .foregroundColor(AppColor.ink)
+                            .frame(width: 32, height: 32)
+                            .glassCircleSurface()
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") {
+                    Button {
+                        Haptics.tap()
                         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
                         onSave(trimmed.isEmpty ? nil : trimmed)
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.clash(13, weight: .bold))
+                            .foregroundColor(AppColor.ink)
+                            .frame(width: 32, height: 32)
+                            .glassCircleSurface()
                     }
-                    .fontWeight(.semibold)
                 }
             }
         }

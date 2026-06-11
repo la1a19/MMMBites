@@ -490,6 +490,8 @@ struct MemoryExtrasCard: View {
             TextField("Add memorable reasons", text: $customFriendTag)
                 .font(AppFont.caption)
                 .foregroundColor(AppColor.ink)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
                 .focused($isCustomTagFocused)
                 .submitLabel(.done)
                 .onSubmit(addCustomFriendTag)

@@ -1137,16 +1137,21 @@ private struct AlbumFilterSheet: View {
             }
             .navigationTitle("Filter albums")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Reset") {
+                    Button {
                         Haptics.tap()
                         draftSelectedTags.removeAll()
                         draftOwnershipFilter = .all
                         tagSearchText = ""
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.clash(13, weight: .bold))
+                            .foregroundColor(AppColor.ink)
+                            .frame(width: 32, height: 32)
+                            .glassCircleSurface()
                     }
-                    .font(AppFont.subheadline.weight(.semibold))
-                    .foregroundColor(AppColor.inkMuted)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -1155,14 +1160,12 @@ private struct AlbumFilterSheet: View {
                         ownershipFilter = draftOwnershipFilter
                         dismiss()
                     } label: {
-                        Text("Apply")
-                            .font(AppFont.subheadline.weight(.semibold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 6)
-                            .background(Capsule().fill(AppGradient.hero))
+                        Image(systemName: "checkmark")
+                            .font(.clash(13, weight: .bold))
+                            .foregroundColor(AppColor.ink)
+                            .frame(width: 32, height: 32)
+                            .glassCircleSurface()
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .sheet(isPresented: $showEditTags) {
@@ -1341,13 +1344,19 @@ private struct EditTagsSheet: View {
             }
             .navigationTitle("Edit tags")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
+                    Button {
                         Haptics.tap()
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.clash(13, weight: .bold))
+                            .foregroundColor(AppColor.ink)
+                            .frame(width: 32, height: 32)
+                            .glassCircleSurface()
                     }
-                    .font(AppFont.subheadline.weight(.semibold))
                 }
             }
             .alert(

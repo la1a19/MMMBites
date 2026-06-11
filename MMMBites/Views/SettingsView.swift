@@ -63,7 +63,21 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        Haptics.tap()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.clash(14, weight: .bold))
+                            .foregroundColor(AppColor.ink)
+                            .frame(width: 32, height: 32)
+                            .glassCircleSurface()
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Haptics.tap()

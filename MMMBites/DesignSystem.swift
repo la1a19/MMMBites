@@ -350,9 +350,9 @@ struct FieldSurface: ViewModifier {
 struct GlassCircleSurface: ViewModifier {
     func body(content: Content) -> some View {
         content
+            .background(.ultraThinMaterial, in: Circle())
             .background(AppGradient.glass, in: Circle())
-            .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
-            .shadow(color: .black.opacity(0.06), radius: 6, y: 3)
+            .overlay(Circle().stroke(Color.white.opacity(0.8), lineWidth: 0.8))
     }
 }
 
