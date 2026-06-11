@@ -18,6 +18,9 @@ struct MemoryBoardView: View {
     @State private var seenReactionMemoryIDs: Set<String> = []
     @State private var bubbleRefreshSeed = 0
 
+    @State private var boardContentVisible = false
+    @State private var isLeavingBoard = false
+    
     private let maximumVisibleBubbles = 28
     private let boardSize: CGFloat = 2400
     private let centerID = "board-center-anchor"
@@ -43,6 +46,7 @@ struct MemoryBoardView: View {
     var body: some View {
         ZStack {
             AppBackground()
+                .opacity(boardContentVisible && !isLeavingBoard ? 1 : 0)
 
             ScrollViewReader { proxy in
                 ScrollView([.horizontal, .vertical], showsIndicators: false) {
@@ -57,6 +61,16 @@ struct MemoryBoardView: View {
                         ForEach(Array(visibleMemories.enumerated()), id: \.element.id) { index, memory in
                             boardMemoryBubble(memory, index: index)
                                 .position(boardPositions[memory.id] ?? boardPosition(for: memory, index: index, seed: bubbleRefreshSeed))
+                                .opacity(boardContentVisible && !isLeavingBoard ? 1 : 0)
+                                .scaleEffect(boardContentVisible && !isLeavingBoard ? 1 : 0.86)
+                                .animation(
+                                    .easeInOut(duration: 1.2).delay(Double(index) * 0.035),
+                                    value: boardContentVisible
+                                )
+                                .animation(
+                                    .easeInOut(duration: 0.7).delay(Double(index) * 0.012),
+                                    value: isLeavingBoard
+                                )
                                 .bounceOnAppear(delay: 0.04 + Double(index) * 0.012)
                         }
                     }
@@ -67,14 +81,39 @@ struct MemoryBoardView: View {
                         proxy.scrollTo(centerID, anchor: .center)
                     }
                 }
+                .opacity(boardContentVisible && !isLeavingBoard ? 1 : 0)
             }
 
             topOverlay
+                .opacity(boardContentVisible && !isLeavingBoard ? 1 : 0)
+
             bottomOverlay
+                .opacity(boardContentVisible && !isLeavingBoard ? 1 : 0)
         }
         .navigationBarBackButtonHidden(true)
+        .onAppear {
+            boardContentVisible = false
+            isLeavingBoard = false
+
+            withAnimation(.easeInOut(duration: 2.0)) {
+                boardContentVisible = true
+            }
+        }
     }
 
+    private func leaveBoardWithFade() {
+        Haptics.tap()
+
+        withAnimation(.easeInOut(duration: 0.8)) {
+            isLeavingBoard = true
+            boardContentVisible = false
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.82) {
+            dismiss()
+        }
+    }
+    
     // MARK: - Background
 
     private var boardBackground: some View {
@@ -155,8 +194,7 @@ struct MemoryBoardView: View {
         VStack {
             HStack {
                 Button {
-                    Haptics.tap()
-                    dismiss()
+                    leaveBoardWithFade()
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.clash(15, weight: .bold))
