@@ -83,14 +83,6 @@ struct AlbumDetailView: View {
         return memories.filter(memoryMatchesSearch(_:))
     }
 
-    private var totalReactionCount: Int {
-        memories.reduce(0) { $0 + $1.reactions.count }
-    }
-
-    private var participantCount: Int {
-        Set(memories.flatMap(\.participantIds)).count
-    }
-
     private var participantIDs: [String] {
         var ids = Set(album.friendIds + memories.flatMap(\.participantIds) + memories.compactMap(\.capturedById))
         ids.insert(album.ownerId)
@@ -154,9 +146,6 @@ struct AlbumDetailView: View {
 
                         searchField
                             .bounceOnAppear(delay: 0.1)
-
-                        summaryRow
-                            .bounceOnAppear(delay: 0.12)
                     }
 
                     // Memories live on a draggable free-form canvas, so they
@@ -527,14 +516,6 @@ struct AlbumDetailView: View {
         .animation(AppAnimation.snappy, value: searchText)
     }
 
-    private var summaryRow: some View {
-        HStack(spacing: AppSpacing.s) {
-            summaryChip(icon: "photo.stack.fill", title: "\(memories.count)", subtitle: "memories")
-            summaryChip(icon: "heart.fill", title: "\(totalReactionCount)", subtitle: "reactions", tint: AppColor.primary)
-            summaryChip(icon: "person.2.fill", title: "\(participantCount)", subtitle: "people", tint: AppColor.secondary)
-        }
-    }
-
     private func addMemoryButton(compact: Bool) -> some View {
         NavigationLink {
             AddMemoryView(
@@ -565,30 +546,6 @@ struct AlbumDetailView: View {
         .pressableScale()
     }
 
-    // MARK: - Summary chip
-
-    private func summaryChip(icon: String, title: String, subtitle: String, tint: Color = AppColor.accent) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.clash(14, weight: .semibold))
-                .foregroundColor(tint)
-                .frame(width: 30, height: 30)
-                .background(Circle().fill(tint.opacity(0.18)))
-            VStack(alignment: .leading, spacing: 0) {
-                Text(title)
-                    .font(AppFont.captionBold)
-                    .foregroundColor(AppColor.ink)
-                Text(subtitle)
-                    .font(AppFont.tiny)
-                    .foregroundColor(AppColor.inkFaint)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .fieldSurface()
-    }
-
     // MARK: - Memory bubble
 
     // MARK: - Free-form memory canvas
@@ -597,21 +554,28 @@ struct AlbumDetailView: View {
         GeometryReader { proxy in
             let viewportSize = proxy.size
             let contentSize = viewportSize
+            let positions = bubblePositions(contentSize: contentSize)
 
             ZStack(alignment: .topLeading) {
                 Color.clear
                     .contentShape(Rectangle())
 
                 ForEach(Array(filteredMemories.enumerated()), id: \.element.id) { index, memory in
-                    memoryBubble(memory)
-                        .position(bubblePosition(
-                            for: memory,
-                            index: index,
-                            contentSize: contentSize
-                        ))
-                        .offset(bubbleOffset(for: memory.id))
-                        .zIndex(zIndex(for: memory.id))
-                        .bounceOnAppear(delay: 0.12 + Double(index) * 0.035)
+                    let basePosition = positions[memory.id]
+                        ?? CGPoint(x: contentSize.width / 2, y: contentSize.height / 2)
+                    memoryBubble(
+                        memory,
+                        basePosition: basePosition,
+                        contentSize: contentSize
+                    )
+                    .position(basePosition)
+                    .offset(bubbleOffset(
+                        for: memory.id,
+                        basePosition: basePosition,
+                        contentSize: contentSize
+                    ))
+                    .zIndex(zIndex(for: memory.id))
+                    .bounceOnAppear(delay: 0.12 + Double(index) * 0.035)
                 }
             }
             .clipped()
@@ -624,15 +588,45 @@ struct AlbumDetailView: View {
         }
     }
 
-    private func bubbleOffset(for id: String) -> CGSize {
+    /// Clamps a center point so the bubble stays inside left/right/top edges of
+    /// the canvas. The bottom is unrestricted because the canvas lives inside a
+    /// ScrollView — the user can scroll to reach anything below.
+    private func clampedCenter(
+        _ proposed: CGPoint,
+        radius: CGFloat,
+        contentSize: CGSize
+    ) -> CGPoint {
+        let inset: CGFloat = 4
+        let minX = radius + inset
+        let maxX = max(minX, contentSize.width - radius - inset)
+        return CGPoint(
+            x: min(max(proposed.x, minX), maxX),
+            y: max(proposed.y, radius + inset)
+        )
+    }
+
+    private func bubbleOffset(
+        for id: String,
+        basePosition: CGPoint,
+        contentSize: CGSize
+    ) -> CGSize {
         let base = bubbleOffsets[id] ?? .zero
+        let translation: CGSize
         if let active = activeBubbleDrag, active.id == id {
-            return CGSize(
-                width: base.width + active.translation.width,
-                height: base.height + active.translation.height
-            )
+            translation = active.translation
+        } else {
+            translation = .zero
         }
-        return base
+        let radius = photoSize(for: id) / 2
+        let proposed = CGPoint(
+            x: basePosition.x + base.width + translation.width,
+            y: basePosition.y + base.height + translation.height
+        )
+        let clamped = clampedCenter(proposed, radius: radius, contentSize: contentSize)
+        return CGSize(
+            width: clamped.x - basePosition.x,
+            height: clamped.y - basePosition.y
+        )
     }
 
     private func zIndex(for id: String) -> Double {
@@ -650,22 +644,61 @@ struct AlbumDetailView: View {
         return min(660, max(500, CGFloat(memoryCount) * 78 + 260))
     }
 
-    private func bubblePosition(for memory: Memory, index: Int, contentSize: CGSize) -> CGPoint {
-        let size = photoSize(for: memory.id)
-        let margin = size / 2 + 22
-        let xRange = max(1, contentSize.width - margin * 2)
-        let yRange = max(1, contentSize.height - margin * 2)
-        let x = margin + stableFraction(for: memory.id, salt: 13) * xRange
-        let y = margin + stableFraction(for: memory.id, salt: 89) * yRange
+    /// Computes a spawn position for every visible memory bubble such that
+    /// bubbles don't overlap at first appearance. Each bubble starts from a
+    /// deterministic random spot derived from its id; if that spot collides
+    /// with an already-placed bubble we resample with a different salt until
+    /// we find a free slot (capped at 40 attempts).
+    private func bubblePositions(contentSize: CGSize) -> [String: CGPoint] {
+        struct Placed {
+            let point: CGPoint
+            let radius: CGFloat
+        }
+        var placed: [String: Placed] = [:]
+        let separation: CGFloat = 14
 
-        return CGPoint(
-            x: min(max(x, margin), contentSize.width - margin),
-            y: min(max(y, margin), contentSize.height - margin)
-        )
+        for memory in filteredMemories {
+            let size = photoSize(for: memory.id)
+            let radius = size / 2
+            let margin = radius + 22
+            let xRange = max(1, contentSize.width - margin * 2)
+            let yRange = max(1, contentSize.height - margin * 2)
+
+            var candidate = CGPoint(
+                x: margin + stableFraction(for: memory.id, salt: 13) * xRange,
+                y: margin + stableFraction(for: memory.id, salt: 89) * yRange
+            )
+
+            for attempt in 1...40 {
+                let collides = placed.values.contains { other in
+                    let dx = candidate.x - other.point.x
+                    let dy = candidate.y - other.point.y
+                    let minDist = radius + other.radius + separation
+                    return (dx * dx + dy * dy) < (minDist * minDist)
+                }
+                if !collides { break }
+                let salt = 13 + attempt * 11
+                candidate = CGPoint(
+                    x: margin + stableFraction(for: memory.id, salt: salt) * xRange,
+                    y: margin + stableFraction(for: memory.id, salt: salt + 47) * yRange
+                )
+            }
+
+            candidate.x = min(max(candidate.x, margin), contentSize.width - margin)
+            candidate.y = min(max(candidate.y, margin), contentSize.height - margin)
+            placed[memory.id] = Placed(point: candidate, radius: radius)
+        }
+
+        return placed.mapValues(\.point)
     }
 
-    private func memoryBubble(_ memory: Memory) -> some View {
+    private func memoryBubble(
+        _ memory: Memory,
+        basePosition: CGPoint,
+        contentSize: CGSize
+    ) -> some View {
         let size = photoSize(for: memory.id)
+        let radius = size / 2
         let avatarTrailing = avatarOnTrailing(for: memory.id)
 
         return VStack(spacing: AppSpacing.s) {
@@ -686,9 +719,14 @@ struct AlbumDetailView: View {
                 }
                 .onEnded { value in
                     let base = bubbleOffsets[memory.id] ?? .zero
+                    let proposed = CGPoint(
+                        x: basePosition.x + base.width + value.translation.width,
+                        y: basePosition.y + base.height + value.translation.height
+                    )
+                    let clamped = clampedCenter(proposed, radius: radius, contentSize: contentSize)
                     bubbleOffsets[memory.id] = CGSize(
-                        width: base.width + value.translation.width,
-                        height: base.height + value.translation.height
+                        width: clamped.x - basePosition.x,
+                        height: clamped.y - basePosition.y
                     )
                     Haptics.soft()
                 }
