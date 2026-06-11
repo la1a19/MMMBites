@@ -54,7 +54,18 @@ class LoginViewModel: ObservableObject {
                 .collection("users")
                 .document(uid)
                 .getDocument()
-            currentUser = try snapshot.data(as: User.self)
+            var user = try snapshot.data(as: User.self)
+            // Older user docs (especially first-time Apple sign-ins) sometimes
+            // miss the email field. Fall back to Firebase Auth's email so the
+            // profile UI shows it, and backfill the Firestore doc.
+            if user.email == nil, let authEmail = Auth.auth().currentUser?.email {
+                user.email = authEmail
+                try? await database
+                    .collection("users")
+                    .document(uid)
+                    .setData(["email": authEmail], merge: true)
+            }
+            currentUser = user
         } catch {
             errorMessage = "Couldn't load user profile: \(error.localizedDescription)"
         }

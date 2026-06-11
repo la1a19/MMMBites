@@ -253,7 +253,10 @@ struct ProfileView: View {
             matching: .images,
             photoLibrary: .shared()
         ) {
-            ZStack(alignment: .bottomTrailing) {
+            // Center-aligned ZStack so the halo stays centered behind the
+            // avatar; camera is anchored to the avatar's bottom-right via
+            // an overlay so it doesn't drag the whole composition off-center.
+            ZStack {
                 Circle()
                     .fill(AppGradient.hero)
                     .frame(width: size + 30, height: size + 30)
@@ -261,15 +264,16 @@ struct ProfileView: View {
                     .opacity(0.5)
 
                 profilePhoto(size: size)
-
-                Image(systemName: "camera.fill")
-                    .font(.clash(16, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 38, height: 38)
-                    .background(Circle().fill(AppGradient.hero))
-                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                    .shadow(color: AppColor.primary.opacity(0.35), radius: 8, y: 4)
-                    .offset(x: -4, y: -4)
+                    .overlay(alignment: .bottomTrailing) {
+                        Image(systemName: "camera.fill")
+                            .font(.clash(16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 38, height: 38)
+                            .background(Circle().fill(AppGradient.hero))
+                            .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                            .shadow(color: AppColor.primary.opacity(0.35), radius: 8, y: 4)
+                            .offset(x: 6, y: 6)
+                    }
             }
         }
         .buttonStyle(.plain)

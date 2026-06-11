@@ -463,9 +463,12 @@ private extension MemoryDetailView {
     func deleteFriendMemorableTag(_ tag: FriendMemorableTag) {
         guard tag.userId == currentUserID else { return }
 
+        // Always send the array (even when empty) — sending `nil` makes Codable
+        // omit the field and Firestore's `merge: true` leaves the old value
+        // untouched, which is why the deleted tag would reappear on re-entry.
         let updatedTags = (memory.friendMemorableTags ?? []).filter { $0.id != tag.id }
         withAnimation(AppAnimation.snappy) {
-            memory.friendMemorableTags = updatedTags.isEmpty ? nil : updatedTags
+            memory.friendMemorableTags = updatedTags
         }
         commitMemoryUpdate()
     }

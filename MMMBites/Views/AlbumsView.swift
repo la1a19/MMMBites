@@ -99,45 +99,60 @@ struct AlbumsView: View {
             ZStack {
                 AppBackground()
 
-                ScrollView {
-                    VStack(spacing: AppSpacing.l) {
+                if showMemoryBoardView {
+                    VStack(spacing: AppSpacing.s) {
                         header
-                            .bounceOnAppear()
-
-                        titleRow
-                            .bounceOnAppear(delay: 0.05)
-
-                        searchRow
-                            .bounceOnAppear(delay: 0.1)
-
-                        if let throwback = throwbackMemory {
-                            throwbackCard(throwback)
-                                .bounceOnAppear(delay: 0.12)
-                        }
-
-                        if bestBitesCount > 0 || mappedMemoriesCount > 0 {
-                            HStack(spacing: AppSpacing.s) {
-                                if bestBitesCount > 0 {
-                                    bestBitesEntryCard
-                                }
-                                if mappedMemoriesCount > 0 {
-                                    mapEntryCard
-                                }
-                            }
-                            .bounceOnAppear(delay: 0.13)
-                        }
-
-                        sectionHeader
-                            .bounceOnAppear(delay: 0.15)
-
-                        bubblesCarousel
-                            .bounceOnAppear(delay: 0.2)
+                            .padding(.horizontal, AppSpacing.xl)
+                            .padding(.top, AppSpacing.s)
+                        MemoryBoardView(
+                            memories: viewModel.memories,
+                            albums: viewModel.albums
+                        )
+                        .environmentObject(authViewModel)
                     }
-                    .padding(.horizontal, AppSpacing.xl)
-                    .padding(.top, AppSpacing.s)
-                    .padding(.bottom, AppSpacing.xl)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                } else {
+                    ScrollView {
+                        VStack(spacing: AppSpacing.l) {
+                            header
+                                .bounceOnAppear()
+
+                            titleRow
+                                .bounceOnAppear(delay: 0.05)
+
+                            searchRow
+                                .bounceOnAppear(delay: 0.1)
+
+                            if let throwback = throwbackMemory {
+                                throwbackCard(throwback)
+                                    .bounceOnAppear(delay: 0.12)
+                            }
+
+                            if bestBitesCount > 0 || mappedMemoriesCount > 0 {
+                                HStack(spacing: AppSpacing.s) {
+                                    if bestBitesCount > 0 {
+                                        bestBitesEntryCard
+                                    }
+                                    if mappedMemoriesCount > 0 {
+                                        mapEntryCard
+                                    }
+                                }
+                                .bounceOnAppear(delay: 0.13)
+                            }
+
+                            sectionHeader
+                                .bounceOnAppear(delay: 0.15)
+
+                            bubblesCarousel
+                                .bounceOnAppear(delay: 0.2)
+                        }
+                        .padding(.horizontal, AppSpacing.xl)
+                        .padding(.top, AppSpacing.s)
+                        .padding(.bottom, AppSpacing.xl)
+                    }
+                    .scrollDismissesKeyboard(.interactively)
+                    .transition(.opacity)
                 }
-                .scrollDismissesKeyboard(.interactively)
             }
             .sheet(isPresented: $showAddAlbum) {
                 NavigationStack {
@@ -202,15 +217,6 @@ struct AlbumsView: View {
             }
             .sheet(isPresented: $showMemoryMap) {
                 MemoryMapView(
-                    memories: viewModel.memories,
-                    albums: viewModel.albums
-                )
-                .environmentObject(authViewModel)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-            }
-            .sheet(isPresented: $showMemoryBoardView) {
-                MemoryBoardView(
                     memories: viewModel.memories,
                     albums: viewModel.albums
                 )
@@ -311,7 +317,7 @@ struct AlbumsView: View {
                     showMemoryBoardView.toggle() 
                 }
             } label: {
-                Image(systemName: showMemoryBoardView ? "circle.grid.2x2.fill" : "square.grid.2x2.fill")
+                Image(systemName: showMemoryBoardView ? "bubbles.and.sparkles.fill" : "bubbles.and.sparkles")
                     .font(.clash(16, weight: .semibold))
                     .foregroundColor(AppColor.ink)
                     .frame(width: 38, height: 38)

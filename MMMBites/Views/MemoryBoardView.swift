@@ -25,8 +25,18 @@ struct MemoryBoardView: View {
     @State private var seenReactionMemoryIDs: Set<String> = []
     @State private var bubbleRefreshSeed = 0
     @State private var memoryOffsets: [String: CGSize] = [:]
+    @State private var gestureStartOffsets: [String: CGSize] = [:]
 
-    private let maximumVisibleBubbles = 28
+    // Canvas pan / zoom (Miro-like infinite board)
+    @State private var canvasOffset: CGSize = .zero
+    @State private var lastCanvasOffset: CGSize = .zero
+    @State private var canvasScale: CGFloat = 1.0
+    @State private var lastCanvasScale: CGFloat = 1.0
+
+    private let maximumVisibleBubbles = 20
+    private let canvasMultiplier: CGFloat = 2.6   // board is 2.6x the screen each axis
+    private let minScale: CGFloat = 0.4
+    private let maxScale: CGFloat = 3.0
 
     private var visibleMemories: [Memory] {
         memories
@@ -44,93 +54,115 @@ struct MemoryBoardView: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let vpW = geometry.size.width
+            let vpH = geometry.size.height
+            let vpCenter = CGPoint(x: vpW / 2, y: vpH / 2)
+
             ZStack {
                 AppBackground()
 
-                ZStack {
-                    boardBackground(size: geometry.size)
-
-                    ForEach(Array(visibleMemories.enumerated()), id: \.element.id) { index, memory in
-                        boardMemoryBubble(memory, index: index)
-                            .position(responsiveBoardPosition(
-                                for: memory,
-                                index: index,
-                                in: geometry.size,
-                                seed: bubbleRefreshSeed
-                            ))
-                            .offset(memoryOffsets[memory.id] ?? .zero)
-                            .gesture(
-                                DragGesture()
-                                    .onChanged { value in
-                                        let bubbleSize = photoSize(for: memory.id)
-                                        let allowedOverflow: CGFloat = 20
-                                        let titleHeight: CGFloat = 80 // Estimated height for section header
-                                        
-                                        let maxX = geometry.size.width/2 - bubbleSize/2 + allowedOverflow
-                                        let minX = -geometry.size.width/2 + bubbleSize/2 - allowedOverflow
-                                        let maxY = geometry.size.height/2 - bubbleSize/2 + allowedOverflow
-                                        let minY = -geometry.size.height/2 + bubbleSize/2 + titleHeight - allowedOverflow
-                                        
-                                        let constrainedX = min(max(value.translation.width, minX), maxX)
-                                        let constrainedY = min(max(value.translation.height, minY), maxY)
-                                        
-                                        memoryOffsets[memory.id] = CGSize(width: constrainedX, height: constrainedY)
-                                    }
-                                    .onEnded { value in
-                                        withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
-                                            memoryOffsets[memory.id] = .zero
-                                        }
-                                        Haptics.soft()
-                                    }
-                            )
-                            .bounceOnAppear(delay: 0.04 + Double(index) * 0.012)
-                    }
-                }
-                .frame(width: geometry.size.width, height: geometry.size.height)
-
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        Button {
-                            Haptics.tap()
-                            withAnimation(AppAnimation.bouncy) {
-                                bubbleRefreshSeed += 1
-                                seenReactionMemoryIDs.removeAll()
+                // Pan layer — empty area receives pan gesture
+                Color.clear
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                canvasOffset = CGSize(
+                                    width: lastCanvasOffset.width + value.translation.width,
+                                    height: lastCanvasOffset.height + value.translation.height
+                                )
                             }
-                        } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(.ultraThinMaterial)
-                                    .frame(width: 60, height: 60)
-                                    .overlay(
-                                        Circle()
-                                            .stroke(Color.white.opacity(0.65), lineWidth: 1.5)
-                                    )
-                                    .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
-                                
-                                VStack(spacing: 2) {
-                                    Image(systemName: "sparkles")
-                                        .font(.clash(16, weight: .bold))
-                                        .foregroundColor(AppColor.primary)
-                                    
-                                    if hiddenMemoryCount > 0 {
-                                        Text("+\(hiddenMemoryCount)")
-                                            .font(.clash(8, weight: .bold))
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 2)
-                                            .background(AppColor.primary, in: Capsule())
+                            .onEnded { _ in
+                                lastCanvasOffset = canvasOffset
+                            }
+                    )
+                    .simultaneousGesture(
+                        MagnificationGesture()
+                            .onChanged { value in
+                                canvasScale = min(max(lastCanvasScale * value, minScale), maxScale)
+                            }
+                            .onEnded { _ in
+                                lastCanvasScale = canvasScale
+                            }
+                    )
+
+                // Bubbles positioned in viewport coords with camera transform
+                ForEach(Array(visibleMemories.enumerated()), id: \.element.id) { index, memory in
+                    let baseOffset = radialOffset(for: memory, index: index, seed: bubbleRefreshSeed)
+                    let userOffset = memoryOffsets[memory.id] ?? .zero
+                    let worldX = baseOffset.x + userOffset.width
+                    let worldY = baseOffset.y + userOffset.height
+                    let screenX = vpCenter.x + (worldX + canvasOffset.width) * canvasScale
+                    let screenY = vpCenter.y + (worldY + canvasOffset.height) * canvasScale
+
+                    boardMemoryBubble(memory, index: index)
+                        .scaleEffect(canvasScale)
+                        .position(x: screenX, y: screenY)
+                        .highPriorityGesture(
+                            DragGesture(minimumDistance: 10)
+                                .onChanged { value in
+                                    if gestureStartOffsets[memory.id] == nil {
+                                        gestureStartOffsets[memory.id] = memoryOffsets[memory.id] ?? .zero
                                     }
+                                    let start = gestureStartOffsets[memory.id] ?? .zero
+                                    memoryOffsets[memory.id] = CGSize(
+                                        width: start.width + value.translation.width / canvasScale,
+                                        height: start.height + value.translation.height / canvasScale
+                                    )
                                 }
+                                .onEnded { _ in
+                                    gestureStartOffsets.removeValue(forKey: memory.id)
+                                    Haptics.soft()
+                                }
+                        )
+                        .bounceOnAppear(delay: 0.04 + Double(index) * 0.012)
+                }
+            }
+            .frame(width: vpW, height: vpH)
+            .clipped()
+            .overlay(alignment: .bottomTrailing) {
+                Button {
+                    Haptics.tap()
+                    withAnimation(AppAnimation.bouncy) {
+                        bubbleRefreshSeed += 1
+                        seenReactionMemoryIDs.removeAll()
+                        memoryOffsets.removeAll()
+                        canvasOffset = .zero
+                        lastCanvasOffset = .zero
+                        canvasScale = 1.0
+                        lastCanvasScale = 1.0
+                    }
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 60, height: 60)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.65), lineWidth: 1.5)
+                            )
+                            .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
+
+                        VStack(spacing: 2) {
+                            Image(systemName: "sparkles")
+                                .font(.clash(16, weight: .bold))
+                                .foregroundColor(AppColor.primary)
+
+                            if hiddenMemoryCount > 0 {
+                                Text("+\(hiddenMemoryCount)")
+                                    .font(.clash(8, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(AppColor.primary, in: Capsule())
                             }
                         }
-                        .buttonStyle(.plain)
-                        .pressableScale(0.95)
                     }
-                    .padding(.trailing, 30)
-                    .padding(.bottom, 40)
                 }
+                .buttonStyle(.plain)
+                .pressableScale(0.95)
+                .padding(.trailing, 30)
+                .padding(.bottom, 40)
             }
         }
     }
@@ -211,45 +243,22 @@ struct MemoryBoardView: View {
 
     // MARK: - Positioning
 
-    private func responsiveBoardPosition(
-        for memory: Memory,
-        index: Int,
-        in size: CGSize,
-        seed: Int = 0
-    ) -> CGPoint {
-        let bubbleSize = photoSize(for: memory.id)
-        let margin = bubbleSize / 2 + 40
-        let refreshSalt = seed * 1000
-
-        // Center the first few memories
-        if index < min(6, visibleMemories.count) {
-            let centerX = size.width / 2
-            let centerY = size.height / 2
-            
-            if index == 0 {
-                return CGPoint(x: centerX, y: centerY)
-            }
-            
-            let radius: CGFloat = min(size.width, size.height) * 0.15 + CGFloat(index % 3) * min(size.width, size.height) * 0.08
-            let angle = stableFraction(for: memory.id, salt: refreshSalt + 91) * .pi * 2
-            
-            let x = centerX + cos(angle) * radius
-            let y = centerY + sin(angle) * radius
-            
-            return CGPoint(
-                x: min(max(x, margin), size.width - margin),
-                y: min(max(y, margin), size.height - margin)
-            )
+    // Returns offset from origin (0,0). Index 0 = at center,
+    // higher indexes spiral outward radially.
+    private func radialOffset(for memory: Memory, index: Int, seed: Int = 0) -> CGPoint {
+        if index == 0 {
+            return .zero
         }
-        
-        // Distribute remaining memories
-        let xRange = size.width - margin * 2
-        let yRange = size.height - margin * 2
-        
-        let x = margin + stableFraction(for: memory.id, salt: refreshSalt + 13) * xRange
-        let y = margin + stableFraction(for: memory.id, salt: refreshSalt + 47) * yRange
-        
-        return CGPoint(x: x, y: y)
+        let refreshSalt = seed * 1000
+        let baseRadius: CGFloat = 110
+        let radiusJitter = (stableFraction(for: memory.id, salt: refreshSalt + 11) - 0.5) * 40
+        let radius = baseRadius * sqrt(CGFloat(index)) + radiusJitter
+
+        let angleBase = stableFraction(for: memory.id, salt: refreshSalt + 91) * .pi * 2
+        let angleNudge = CGFloat(index) * 0.6
+        let angle = angleBase + angleNudge
+
+        return CGPoint(x: cos(angle) * radius, y: sin(angle) * radius)
     }
 
     // MARK: - Memory Bubble
@@ -438,8 +447,10 @@ struct MemoryBoardView: View {
     }
 
     private func photoSize(for id: String) -> CGFloat {
-        let sizes: [CGFloat] = [112, 126, 140, 154]
-        return sizes[stableHash(id) % sizes.count]
+        // Continuous random size in [100, 165] — feels more organic than 4 fixed sizes
+        let minSize: CGFloat = 100
+        let maxSize: CGFloat = 165
+        return minSize + stableFraction(for: id, salt: 555) * (maxSize - minSize)
     }
 
     private func bubbleFrameWidth(for id: String) -> CGFloat {
