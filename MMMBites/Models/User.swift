@@ -15,6 +15,7 @@ struct User: Identifiable, Codable, Equatable {
     var avatarURL: String?
     var avatarData: String?
     var friendIDs: [String]
+    var customTags: [String]
     @ServerTimestamp var createdAt: Date?
 
     init(
@@ -24,6 +25,7 @@ struct User: Identifiable, Codable, Equatable {
         avatarURL: String? = nil,
         avatarData: String? = nil,
         friendIDs: [String] = [],
+        customTags: [String] = [],
         createdAt: Date? = nil
     ) {
         self.id = id
@@ -32,6 +34,7 @@ struct User: Identifiable, Codable, Equatable {
         self.avatarURL = avatarURL
         self.avatarData = avatarData
         self.friendIDs = friendIDs
+        self.customTags = customTags
         self.createdAt = createdAt
     }
 
@@ -42,6 +45,7 @@ struct User: Identifiable, Codable, Equatable {
         case avatarURL
         case avatarData
         case friendIDs
+        case customTags
         case createdAt
     }
 
@@ -53,6 +57,7 @@ struct User: Identifiable, Codable, Equatable {
         avatarURL = try container.decodeIfPresent(String.self, forKey: .avatarURL)
         avatarData = try container.decodeIfPresent(String.self, forKey: .avatarData)
         friendIDs = try container.decodeIfPresent([String].self, forKey: .friendIDs) ?? []
+        customTags = try container.decodeIfPresent([String].self, forKey: .customTags) ?? []
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
     }
 }

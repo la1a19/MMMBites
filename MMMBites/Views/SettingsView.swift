@@ -19,35 +19,13 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
     }
 }
 
-enum MemoryPrivacy: String, CaseIterable, Identifiable {
-    case onlyMe, friends, publicAll
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .onlyMe:    return "Only me"
-        case .friends:   return "Friends"
-        case .publicAll: return "Public"
-        }
-    }
-    var icon: String {
-        switch self {
-        case .onlyMe:    return "lock.fill"
-        case .friends:   return "person.2.fill"
-        case .publicAll: return "globe"
-        }
-    }
-}
-
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     // Persisted preferences
     @AppStorage("pref.hapticFeedback")      private var hapticFeedback: Bool = true
     @AppStorage("pref.memoryReminders")     private var memoryReminders: Bool = true
-    @AppStorage("pref.autoPromptBestBite")  private var autoPromptBestBite: Bool = true
-    @AppStorage("pref.defaultMood")         private var defaultMoodRaw: String = ""
     @AppStorage("pref.appearance")          private var appearanceRaw: String = AppearanceMode.system.rawValue
-    @AppStorage("pref.memoryPrivacy")       private var memoryPrivacyRaw: String = MemoryPrivacy.friends.rawValue
 
     @State private var showFeedbackSheet = false
     @State private var navigateToPrivacyPolicy = false
@@ -72,11 +50,8 @@ struct SettingsView: View {
                         appearanceSection
                             .bounceOnAppear(delay: 0.05)
 
-                        memoriesSection
-                            .bounceOnAppear(delay: 0.1)
-
                         aboutSection
-                            .bounceOnAppear(delay: 0.15)
+                            .bounceOnAppear(delay: 0.1)
 
                         Text("MMMBites · \(appVersion)")
                             .font(.clash(11, weight: .medium))
@@ -120,7 +95,7 @@ struct SettingsView: View {
             toggleRow(icon: "iphone.radiowaves.left.and.right",
                       tint: AppColor.primary,
                       title: "Haptic feedback",
-                      subtitle: "Subtle taps as you interact",
+                      subtitle: nil,
                       isOn: $hapticFeedback)
 
             divider
@@ -128,64 +103,9 @@ struct SettingsView: View {
             toggleRow(icon: "bell.fill",
                       tint: AppColor.secondary,
                       title: "Memory reminders",
-                      subtitle: "Nudge me to log meals",
+                      subtitle: nil,
                       isOn: $memoryReminders)
-
-            divider
-
-            moodPickerRow
         }
-    }
-
-    private var moodPickerRow: some View {
-        HStack(spacing: AppSpacing.m) {
-            iconBadge(icon: "face.smiling", tint: AppColor.accent)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Default mood")
-                    .font(.clash(15, weight: .medium))
-                    .foregroundColor(AppColor.ink)
-                Text("Pre-select when starting a memory")
-                    .font(.clash(12, weight: .regular))
-                    .foregroundColor(AppColor.inkFaint)
-            }
-            Spacer()
-            Menu {
-                Button("None") {
-                    Haptics.tap()
-                    defaultMoodRaw = ""
-                }
-                ForEach(MemoryMood.allCases) { mood in
-                    Button {
-                        Haptics.tap()
-                        defaultMoodRaw = mood.rawValue
-                    } label: {
-                        Text("\(mood.emoji)  \(mood.label)")
-                    }
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    if let mood = currentDefaultMood {
-                        Text(mood.emoji)
-                        Text(mood.label)
-                    } else {
-                        Text("None")
-                    }
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.clash(10, weight: .bold))
-                }
-                .font(.clash(13, weight: .semibold))
-                .foregroundColor(AppColor.ink)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(Capsule().fill(Color.white.opacity(0.85)))
-                .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
-            }
-        }
-        .padding(.vertical, 10)
-    }
-
-    private var currentDefaultMood: MemoryMood? {
-        MemoryMood(rawValue: defaultMoodRaw)
     }
 
     // MARK: - APPEARANCE
@@ -194,14 +114,9 @@ struct SettingsView: View {
         sectionGroup(title: "APPEARANCE") {
             HStack(spacing: AppSpacing.m) {
                 iconBadge(icon: "paintpalette.fill", tint: AppColor.secondary)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Theme")
-                        .font(.clash(15, weight: .medium))
-                        .foregroundColor(AppColor.ink)
-                    Text("Match system or pick yourself")
-                        .font(.clash(12, weight: .regular))
-                        .foregroundColor(AppColor.inkFaint)
-                }
+                Text("Theme")
+                    .font(.clash(15, weight: .medium))
+                    .foregroundColor(AppColor.ink)
                 Spacer()
             }
             .padding(.vertical, 8)
@@ -234,59 +149,6 @@ struct SettingsView: View {
                         radius: selected ? 6 : 3, y: 2)
         }
         .buttonStyle(.plain)
-    }
-
-    // MARK: - MEMORIES
-
-    private var memoriesSection: some View {
-        sectionGroup(title: "MEMORIES") {
-            HStack(spacing: AppSpacing.m) {
-                iconBadge(icon: "eye.fill", tint: AppColor.primary)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Default privacy")
-                        .font(.clash(15, weight: .medium))
-                        .foregroundColor(AppColor.ink)
-                    Text("Who can see new memories")
-                        .font(.clash(12, weight: .regular))
-                        .foregroundColor(AppColor.inkFaint)
-                }
-                Spacer()
-                Menu {
-                    ForEach(MemoryPrivacy.allCases) { p in
-                        Button {
-                            Haptics.tap()
-                            memoryPrivacyRaw = p.rawValue
-                        } label: {
-                            Label(p.label, systemImage: p.icon)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        if let p = MemoryPrivacy(rawValue: memoryPrivacyRaw) {
-                            Image(systemName: p.icon)
-                            Text(p.label)
-                        }
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.clash(10, weight: .bold))
-                    }
-                    .font(.clash(13, weight: .semibold))
-                    .foregroundColor(AppColor.ink)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(Capsule().fill(Color.white.opacity(0.85)))
-                    .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
-                }
-            }
-            .padding(.vertical, 10)
-
-            divider
-
-            toggleRow(icon: "fork.knife",
-                      tint: AppColor.accent,
-                      title: "Auto-prompt best bite",
-                      subtitle: "Ask before saving a memory",
-                      isOn: $autoPromptBestBite)
-        }
     }
 
     // MARK: - ABOUT

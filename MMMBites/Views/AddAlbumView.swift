@@ -12,6 +12,12 @@ import PhotosUI
 import FirebaseAuth
 import FirebaseFirestore
 
+private enum AlbumFieldLimits {
+    static let title = 50
+    static let description = 400
+    static let tag = 20
+}
+
 struct AddAlbumView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authViewModel: LoginViewModel
@@ -37,13 +43,18 @@ struct AddAlbumView: View {
     @State private var friendUsers: [User] = []
     @State private var isLoadingFriends = false
 
-    private let existingTagOptions = AlbumTagDefaults.all
+    let existingTags: [String]
 
     // Whether we are editing (affects title text, save behaviour)
     private var isEditing: Bool { albumToEdit != nil }
 
-    init(albumToEdit: Album? = nil, onSave: @escaping (Album) -> Void = { _ in }) {
+    init(
+        albumToEdit: Album? = nil,
+        existingTags: [String] = [],
+        onSave: @escaping (Album) -> Void = { _ in }
+    ) {
         self.albumToEdit = albumToEdit
+        self.existingTags = existingTags
         self.onSave = onSave
         // Pre-fill the form if editing, otherwise start empty
         _title = State(initialValue: albumToEdit?.title.uppercased() ?? "")
@@ -128,19 +139,27 @@ struct AddAlbumView: View {
 
     private var albumNameField: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("ALBUM NAME")
-                .font(AppFont.tiny)
-                .foregroundColor(AppColor.inkMuted)
-                .padding(.leading, 6)
+            HStack(alignment: .firstTextBaseline) {
+                Text("ALBUM NAME")
+                    .font(AppFont.tiny)
+                    .foregroundColor(AppColor.inkMuted)
+                    .padding(.leading, 6)
+                Spacer()
+                counterLabel(count: title.count, limit: AlbumFieldLimits.title)
+                    .padding(.trailing, 6)
+            }
             TextField("Enter album name", text: $title)
-                .font(.clash(22, weight: .bold))
-                .multilineTextAlignment(.center)
+                .font(AppFont.body)
                 .autocorrectionDisabled(true)
+                .textContentType(nil)
                 .textInputAutocapitalization(.characters)
                 .onChange(of: title) { _, newValue in
-                    let uppercased = newValue.uppercased()
-                    if title != uppercased {
-                        title = uppercased
+                    var next = newValue.uppercased()
+                    if next.count > AlbumFieldLimits.title {
+                        next = String(next.prefix(AlbumFieldLimits.title))
+                    }
+                    if title != next {
+                        title = next
                     }
                 }
                 .padding(.horizontal, 16)
@@ -155,13 +174,27 @@ struct AddAlbumView: View {
         .padding(.horizontal, 24)
     }
 
+    @ViewBuilder
+    private func counterLabel(count: Int, limit: Int) -> some View {
+        let threshold = max(1, limit - 10)
+        if count >= threshold {
+            Text("\(count)/\(limit)")
+                .font(.clash(10, weight: .semibold))
+                .foregroundColor(count >= limit ? AppColor.primary : AppColor.inkMuted)
+        }
+    }
+
     private var locationField: some View {
-        VStack(spacing: AppSpacing.s) {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("LOCATION")
+                .font(AppFont.captionBold)
+                .foregroundColor(AppColor.inkMuted)
+                .padding(.leading, 6)
             HStack(spacing: 6) {
                 Image(systemName: "mappin.and.ellipse")
                     .foregroundColor(AppColor.primary)
-                TextField("Location", text: $location)
-                    .font(AppFont.subheadline)
+                TextField("Add a place", text: $location)
+                    .font(AppFont.body)
                     .focused($isLocationFocused)
                     .autocorrectionDisabled(true)
                     .textInputAutocapitalization(.words)
@@ -235,7 +268,7 @@ struct AddAlbumView: View {
                 }
             }
 
-            suggestedTags
+            existingTagsView
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -402,15 +435,21 @@ struct AddAlbumView: View {
 
     private var descriptionField: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("DESCRIPTION")
-                .font(AppFont.tiny)
-                .foregroundColor(AppColor.inkMuted)
-                .padding(.leading, 6)
+            HStack(alignment: .firstTextBaseline) {
+                Text("DESCRIPTION")
+                    .font(AppFont.tiny)
+                    .foregroundColor(AppColor.inkMuted)
+                    .padding(.leading, 6)
+                Spacer()
+                counterLabel(count: description.count, limit: AlbumFieldLimits.description)
+                    .padding(.trailing, 6)
+            }
 
             ZStack(alignment: .topLeading) {
                 if description.isEmpty {
                     Text("Add a short note about this album")
                         .font(AppFont.body)
+                        .opacity(0.5)
                         .foregroundColor(AppColor.inkFaint)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 15)
@@ -420,9 +459,16 @@ struct AddAlbumView: View {
                 TextEditor(text: $description)
                     .font(AppFont.body)
                     .scrollContentBackground(.hidden)
+                    .autocorrectionDisabled(true)
+                    .textContentType(nil)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 10)
                     .frame(minHeight: 92)
+                    .onChange(of: description) { _, newValue in
+                        if newValue.count > AlbumFieldLimits.description {
+                            description = String(newValue.prefix(AlbumFieldLimits.description))
+                        }
+                    }
             }
             .background(Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
             .overlay(
@@ -446,6 +492,7 @@ struct AddAlbumView: View {
                     .frame(width: 260, height: 260)
                     .blur(radius: 24)
                     .opacity(0.4)
+                
 
                 if let coverPhotoData,
                    let image = UIImage(data: coverPhotoData) {
@@ -478,6 +525,10 @@ struct AddAlbumView: View {
                         )
                 }
 
+                Circle()
+                    .stroke(Color.white.opacity(0.8), lineWidth: 3)
+                    .frame(width: 240, height: 240)
+
                 // Edit (pencil) overlay
                 Circle()
                     .fill(AppGradient.hero)
@@ -491,7 +542,6 @@ struct AddAlbumView: View {
                     .shadow(color: AppColor.primary.opacity(0.45), radius: 12, y: 6)
                     .offset(x: 70, y: 70)
             }
-            .overlay(Circle().stroke(Color.white.opacity(0.8), lineWidth: 3).frame(width: 240, height: 240))
         }
         .buttonStyle(.plain)
         .pressableScale(0.97)
@@ -507,10 +557,16 @@ struct AddAlbumView: View {
             TextField("Add tag", text: $searchText)
                 .font(AppFont.caption)
                 .autocorrectionDisabled(true)
+                .textContentType(nil)
                 .textInputAutocapitalization(.words)
                 .lineLimit(1)
                 .frame(width: 88)
                 .onSubmit { addTagFromSearch() }
+                .onChange(of: searchText) { _, newValue in
+                    if newValue.count > AlbumFieldLimits.tag {
+                        searchText = String(newValue.prefix(AlbumFieldLimits.tag))
+                    }
+                }
 
             Button {
                 addTagFromSearch()
@@ -556,22 +612,22 @@ struct AddAlbumView: View {
         .transition(.scale.combined(with: .opacity))
     }
 
-    private var suggestedTags: some View {
-        let options = existingTagOptions.filter { option in
+    private var existingTagsView: some View {
+        let options = existingTags.filter { option in
             !tags.contains { $0.caseInsensitiveCompare(option) == .orderedSame }
         }
 
         return VStack(alignment: .leading, spacing: 8) {
             if !options.isEmpty {
-                Text("SUGGESTED ALBUM TAGS")
-                    .font(AppFont.tiny)
+                Text("EXISTING TAGS")
+                    .font(AppFont.captionBold)
                     .foregroundColor(AppColor.inkMuted)
                     .padding(.leading, 4)
 
                 FlowLayout(spacing: 8) {
                     ForEach(options, id: \.self) { tag in
                         Button {
-                            addSuggestedTag(tag)
+                            addExistingTag(tag)
                         } label: {
                             Text(tag)
                                 .font(AppFont.captionBold)
@@ -591,8 +647,12 @@ struct AddAlbumView: View {
     }
 
     private func addTagFromSearch() {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !tags.contains(trimmed) else { return }
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines).capitalized
+        guard !trimmed.isEmpty else { return }
+        guard !tags.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) else {
+            searchText = ""
+            return
+        }
         withAnimation(AppAnimation.bouncy) {
             tags.append(trimmed)
         }
@@ -600,7 +660,7 @@ struct AddAlbumView: View {
         Haptics.success()
     }
 
-    private func addSuggestedTag(_ tag: String) {
+    private func addExistingTag(_ tag: String) {
         guard !tags.contains(where: { $0.caseInsensitiveCompare(tag) == .orderedSame }) else { return }
         withAnimation(AppAnimation.bouncy) {
             tags.append(tag)
@@ -834,7 +894,7 @@ struct FriendPickerSheet: View {
                                     Spacer()
                                     if let friendID = friend.id, selectedFriendIDs.contains(friendID) {
                                         Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(AppGradient.hero)
+                                            .foregroundStyle(AppGradient.heroText)
                                             .font(.clash(20, weight: .semibold))
                                             .transition(.scale.combined(with: .opacity))
                                     } else {

@@ -12,8 +12,9 @@ struct AlbumsView: View {
     @StateObject private var viewModel = AlbumsViewModel()
 
     @State private var searchText = ""
-    @State private var showFilters = false
+    @State private var showFilterSheet = false
     @State private var selectedTags: Set<String> = []
+    @State private var ownershipFilter: AlbumOwnershipFilter = .all
     @State private var showAddAlbum = false
     @State private var currentPage = 0
     @State private var showGridView = false
@@ -28,18 +29,48 @@ struct AlbumsView: View {
     @State private var navigateToMemoryBoard = false
 
 
-    // Album-level categories shown when the filter panel is open.
-    private let filterOptions = AlbumTagDefaults.filters
+    // Album-level categories shown in the filter sheet.
+    // Combines built-in defaults, the user's saved custom tags, and any tag
+    // currently in use across their albums — capitalised + deduped + sorted.
+    private var filterOptions: [String] {
+        var seen: Set<String> = []
+        var ordered: [String] = []
+        let sources: [String] =
+            AlbumTagDefaults.all
+            + (authViewModel.currentUser?.customTags ?? [])
+            + viewModel.albums.flatMap(\.tags)
+        for raw in sources {
+            let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).capitalized
+            guard !normalized.isEmpty, seen.insert(normalized).inserted else { continue }
+            ordered.append(normalized)
+        }
+        return ordered.sorted()
+    }
 
-    // Albums after applying selected tag filters + search text
+    private var isAnyFilterActive: Bool {
+        !selectedTags.isEmpty || ownershipFilter != .all
+    }
+
+    // Albums after applying selected tag filters + ownership + search text
     private var filteredAlbums: [Album] {
-        viewModel.albums.filter { album in
+        let currentUserID = authViewModel.currentUser?.id
+        return viewModel.albums.filter { album in
             let matchesTags = selectedTags.isEmpty ||
                 !selectedTags.isDisjoint(with: Set(album.tags.map { $0.capitalized }))
 
             let matchesSearch = searchText.isEmpty || albumMatchesSearch(album)
 
-            return matchesTags && matchesSearch
+            let matchesOwnership: Bool
+            switch ownershipFilter {
+            case .all:
+                matchesOwnership = true
+            case .mine:
+                matchesOwnership = album.ownerId == currentUserID
+            case .friends:
+                matchesOwnership = album.ownerId != currentUserID
+            }
+
+            return matchesTags && matchesSearch && matchesOwnership
         }
     }
 
@@ -120,7 +151,7 @@ struct AlbumsView: View {
             }
             .sheet(isPresented: $showAddAlbum) {
                 NavigationStack {
-                    AddAlbumView { album in
+                    AddAlbumView(existingTags: filterOptions) { album in
                         Task {
                             await viewModel.add(album)
                             await MainActor.run {
@@ -205,6 +236,59 @@ struct AlbumsView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }
+            .sheet(isPresented: $showFilterSheet) {
+                AlbumFilterSheet(
+                    availableTags: filterOptions,
+                    customTags: authViewModel.currentUser?.customTags ?? [],
+                    selectedTags: $selectedTags,
+                    ownershipFilter: $ownershipFilter,
+                    onAddTag: { newTag in
+                        let trimmed = newTag.trimmingCharacters(in: .whitespacesAndNewlines).capitalized
+                        guard !trimmed.isEmpty else { return }
+                        var existing = authViewModel.currentUser?.customTags ?? []
+                        guard !existing.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) else { return }
+                        existing.append(trimmed)
+                        Task { await authViewModel.updateCustomTags(existing) }
+                    },
+                    onRenameTag: { oldTag, newTag in
+                        let trimmedOld = oldTag.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let trimmedNew = newTag.trimmingCharacters(in: .whitespacesAndNewlines).capitalized
+                        guard !trimmedOld.isEmpty, !trimmedNew.isEmpty,
+                              trimmedOld.caseInsensitiveCompare(trimmedNew) != .orderedSame else { return }
+                        // Update local selection if the renamed tag was selected
+                        if selectedTags.contains(where: { $0.caseInsensitiveCompare(trimmedOld) == .orderedSame }) {
+                            selectedTags = Set(selectedTags.map {
+                                $0.caseInsensitiveCompare(trimmedOld) == .orderedSame ? trimmedNew : $0
+                            })
+                        }
+                        // Update customTags + cascade across albums
+                        var customs = authViewModel.currentUser?.customTags ?? []
+                        if let idx = customs.firstIndex(where: { $0.caseInsensitiveCompare(trimmedOld) == .orderedSame }) {
+                            customs[idx] = trimmedNew
+                        }
+                        Task {
+                            await authViewModel.updateCustomTags(customs)
+                            await viewModel.renameTagInAlbums(from: trimmedOld, to: trimmedNew)
+                        }
+                    },
+                    onDeleteTag: { tag in
+                        let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else { return }
+                        selectedTags = selectedTags.filter {
+                            $0.caseInsensitiveCompare(trimmed) != .orderedSame
+                        }
+                        let customs = (authViewModel.currentUser?.customTags ?? []).filter {
+                            $0.caseInsensitiveCompare(trimmed) != .orderedSame
+                        }
+                        Task {
+                            await authViewModel.updateCustomTags(customs)
+                            await viewModel.removeTagFromAlbums(trimmed)
+                        }
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
             .alert(
                 "Couldn't sync albums",
                 isPresented: Binding(
@@ -225,9 +309,9 @@ struct AlbumsView: View {
     private var backgroundGradient: some View {
         LinearGradient(
             colors: [
-                Color(red: 0.78, green: 0.90, blue: 0.88),
-                Color(red: 0.96, green: 0.93, blue: 0.80),
-                Color(red: 0.80, green: 0.90, blue: 0.96)
+                AppColor.background,
+                AppColor.secondary,
+                AppColor.primary.opacity(0.65)
             ],
             startPoint: .top,
             endPoint: .bottom
@@ -341,46 +425,6 @@ struct AlbumsView: View {
         }
     }
 
-    // MARK: - Filter pills
-
-    private var filterPills: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-            ForEach(filterOptions, id: \.self) { tag in
-                Button {
-                    Haptics.selection()
-                    withAnimation(AppAnimation.snappy) { toggleTag(tag) }
-                } label: {
-                    HStack {
-                        Text(tag)
-                            .fontWeight(.semibold)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                        if selectedTags.contains(tag) {
-                            Spacer()
-                            Image(systemName: "xmark")
-                                .font(.clash(13, weight: .bold))
-                        }
-                    }
-                    .font(AppFont.subheadline)
-                    .foregroundColor(selectedTags.contains(tag) ? .white : AppColor.ink)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(
-                        Capsule().fill(
-                            selectedTags.contains(tag)
-                            ? AppColor.tag(tag)
-                            : Color.white.opacity(0.7)
-                        )
-                    )
-                    .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
-                    .shadow(color: .black.opacity(0.06), radius: 6, y: 3)
-                }
-                .buttonStyle(.plain)
-                .pressableScale(0.94)
-            }
-        }
-    }
-
     // MARK: - Title
 
     private var titleRow: some View {
@@ -406,7 +450,49 @@ struct AlbumsView: View {
     }
     // MARK: - Search + filter
 
- 
+    private var searchRow: some View {
+        HStack(spacing: AppSpacing.s) {
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(AppColor.inkFaint)
+                TextField("Search albums", text: $searchText)
+                    .font(AppFont.subheadline)
+                    .autocorrectionDisabled()
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                        Haptics.tap()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(AppColor.inkFaint)
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 40)
+            .frame(maxWidth: .infinity)
+            .background(AppColor.surface.opacity(0.86), in: Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.58), lineWidth: 1))
+            .shadow(color: .black.opacity(0.04), radius: 5, y: 2)
+
+            Button {
+                Haptics.tap()
+                showFilterSheet = true
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.clash(14, weight: .semibold))
+                    .foregroundColor(isAnyFilterActive ? .white : AppColor.ink)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(isAnyFilterActive ? AppColor.primary : AppColor.surface.opacity(0.88)))
+                    .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+        .animation(AppAnimation.snappy, value: searchText.isEmpty)
+    }
+
     // MARK: - Section header
 
     private var sectionHeader: some View {
@@ -447,29 +533,33 @@ struct AlbumsView: View {
     }
 
     private var carouselView: some View {
-        AlbumBubbleCarouselView(
-            albums: filteredAlbums,
-            currentPage: $currentPage,
-            memories: viewModel.memories,
-            coverPhotoData: { album in
-                coverPhotoData(for: album)
-            },
-            coverImageURLs: { album in
-                coverImageURLs(for: album)
-            },
-            ownerDisplayName: { album in
-                ownerDisplayName(for: album)
-            },
-            ownerAvatarImage: { album in
-                ownerAvatarImage(for: album)
-            },
-            onAlbumUpdate: { updatedAlbum in
-                updateAlbum(updatedAlbum)
-            },
-            onAlbumDelete: { deletedAlbum in
-                deleteAlbum(deletedAlbum)
+        TabView(selection: $currentPage) {
+            ForEach(Array(filteredAlbums.enumerated()), id: \.element.id) { index, album in
+                VStack(spacing: AppSpacing.l) {
+                    NavigationLink {
+                        AlbumDetailView(
+                            album: album,
+                            crossAlbumMemories: viewModel.memories,
+                            onAlbumUpdate: { updatedAlbum in
+                                updateAlbum(updatedAlbum)
+                            },
+                            onAlbumDelete: { deletedAlbum in
+                                deleteAlbum(deletedAlbum)
+                            }
+                        )
+                    } label: {
+                        photoBubble(album, isActive: index == currentPage)
+                    }
+                    .buttonStyle(.plain)
+
+                    albumInfoCard(album)
+                }
+                .tag(index)
             }
-        )
+        }
+        .tabViewStyle(.page(indexDisplayMode: .always))
+        .frame(height: 540)
+        .animation(AppAnimation.smooth, value: currentPage)
     }
     
 
@@ -546,15 +636,15 @@ struct AlbumsView: View {
 
     private var emptyState: some View {
         VStack(spacing: AppSpacing.m) {
-            Image(systemName: viewModel.albums.isEmpty ? "rectangle.stack.badge.plus" : "line.3.horizontal.decrease.circle")
+            Image(systemName: viewModel.albums.isEmpty ? "rectangle.stack.badge.plus" : "magnifyingglass")
                 .font(.clash(42, weight: .light))
                 .foregroundColor(AppColor.inkFaint)
                 .frame(width: 92, height: 92)
                 .background(AppGradient.glass, in: Circle())
-            Text(viewModel.albums.isEmpty ? "Create your first album" : "No albums match your filters")
+            Text(viewModel.albums.isEmpty ? "Create your first album" : "No albums match your search")
                 .font(AppFont.headline)
                 .foregroundColor(AppColor.inkMuted)
-            Text(viewModel.albums.isEmpty ? "Start with a place, trip, or food theme." : "Try clearing tags or a different search.")
+            Text(viewModel.albums.isEmpty ? "Start with a place, trip, or food theme." : "Try a different search.")
                 .font(AppFont.caption)
                 .foregroundColor(AppColor.inkFaint)
             Button {
@@ -562,13 +652,12 @@ struct AlbumsView: View {
                     showAddAlbum = true
                 } else {
                     withAnimation(AppAnimation.snappy) {
-                        selectedTags.removeAll()
                         searchText = ""
                     }
                 }
                 Haptics.tap()
             } label: {
-                Text(viewModel.albums.isEmpty ? "New Album" : "Reset filters")
+                Text(viewModel.albums.isEmpty ? "New Album" : "Clear search")
                     .font(AppFont.captionBold)
                     .foregroundColor(.white)
                     .padding(.horizontal, 16)
@@ -637,13 +726,13 @@ struct AlbumsView: View {
                         .frame(width: 34, height: 34)
                     Image(systemName: icon)
                         .font(.clash(13, weight: .bold))
-                        .foregroundStyle(AppGradient.hero)
+                        .foregroundStyle(AppGradient.heroText)
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(label)
                         .font(.clash(9, weight: .semibold))
                         .tracking(1.1)
-                        .foregroundStyle(AppGradient.hero)
+                        .foregroundStyle(AppGradient.heroText)
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text(value)
                             .font(.clash(16, weight: .bold))
@@ -678,45 +767,25 @@ struct AlbumsView: View {
         let startOfToday = calendar.startOfDay(for: today)
         let todayComp = calendar.dateComponents([.month, .day], from: today)
 
-        // Primary: same month + day, but a past year ("On this day, 1 year ago")
-        let onThisDay = viewModel.memories.filter { memory in
-            let comp = calendar.dateComponents([.month, .day], from: memory.date)
-            return memory.date < startOfToday
-                && comp.month == todayComp.month
-                && comp.day == todayComp.day
-        }
-        if let match = onThisDay.sorted(by: { $0.date > $1.date }).first {
-            return match
-        }
-
-        // Fallback: any memory older than 30 days ("Throwback")
-        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: today) ?? today
+        // Only memories from a past year that share today's month + day.
+        // No fallback — if nothing matches today, no throwback card is shown.
         return viewModel.memories
-            .filter { $0.date < thirtyDaysAgo }
-            .randomElement()
+            .filter { memory in
+                let comp = calendar.dateComponents([.month, .day], from: memory.date)
+                return memory.date < startOfToday
+                    && comp.month == todayComp.month
+                    && comp.day == todayComp.day
+            }
+            .sorted { $0.date > $1.date }
+            .first
     }
 
     private func throwbackLabel(for memory: Memory) -> String {
         let calendar = Calendar.current
-        let now = Date()
-        let comp = calendar.dateComponents([.year, .month, .day], from: now)
-        let memComp = calendar.dateComponents([.year, .month, .day], from: memory.date)
-
-        let isOnThisDay = comp.month == memComp.month && comp.day == memComp.day
-        let years = max(0, (comp.year ?? 0) - (memComp.year ?? 0))
-
-        if isOnThisDay && years >= 1 {
-            return "ON THIS DAY · \(years) YEAR\(years == 1 ? "" : "S") AGO"
-        }
-
-        let months = calendar.dateComponents([.month], from: memory.date, to: now).month ?? 0
-        if years >= 1 {
-            return "THROWBACK · \(years) YEAR\(years == 1 ? "" : "S") AGO"
-        }
-        if months >= 1 {
-            return "THROWBACK · \(months) MONTH\(months == 1 ? "" : "S") AGO"
-        }
-        return "THROWBACK"
+        let nowYear = calendar.component(.year, from: Date())
+        let memYear = calendar.component(.year, from: memory.date)
+        let years = max(1, nowYear - memYear)
+        return "ON THIS DAY · \(years) YEAR\(years == 1 ? "" : "S") AGO"
     }
 
     private func album(forMemory memory: Memory) -> Album? {
@@ -746,7 +815,7 @@ struct AlbumsView: View {
                     Text(throwbackLabel(for: memory))
                         .font(.clash(10, weight: .semibold))
                         .tracking(1.1)
-                        .foregroundStyle(AppGradient.hero)
+                        .foregroundStyle(AppGradient.heroText)
                         .lineLimit(1)
 
                     Text(memory.title)
@@ -790,14 +859,6 @@ struct AlbumsView: View {
     }
 
     // MARK: - Helpers
-
-    private func toggleTag(_ tag: String) {
-        if selectedTags.contains(tag) {
-            selectedTags.remove(tag)
-        } else {
-            selectedTags.insert(tag)
-        }
-    }
 
     private func albumMatchesSearch(_ album: Album) -> Bool {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -866,6 +927,458 @@ struct AlbumsView: View {
 
     private func deleteAlbum(_ deletedAlbum: Album) {
         Task { await viewModel.remove(deletedAlbum) }
+    }
+}
+
+enum AlbumOwnershipFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case mine = "Mine"
+    case friends = "Friends"
+
+    var id: String { rawValue }
+}
+
+private struct AlbumFilterSheet: View {
+    let availableTags: [String]
+    let customTags: [String]
+    @Binding var selectedTags: Set<String>
+    @Binding var ownershipFilter: AlbumOwnershipFilter
+    let onAddTag: (String) -> Void
+    let onRenameTag: (String, String) -> Void
+    let onDeleteTag: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var draftSelectedTags: Set<String>
+    @State private var draftOwnershipFilter: AlbumOwnershipFilter
+    @State private var tagSearchText: String = ""
+    @State private var showEditTags = false
+
+    init(
+        availableTags: [String],
+        customTags: [String],
+        selectedTags: Binding<Set<String>>,
+        ownershipFilter: Binding<AlbumOwnershipFilter>,
+        onAddTag: @escaping (String) -> Void,
+        onRenameTag: @escaping (String, String) -> Void,
+        onDeleteTag: @escaping (String) -> Void
+    ) {
+        self.availableTags = availableTags
+        self.customTags = customTags
+        self._selectedTags = selectedTags
+        self._ownershipFilter = ownershipFilter
+        self.onAddTag = onAddTag
+        self.onRenameTag = onRenameTag
+        self.onDeleteTag = onDeleteTag
+        self._draftSelectedTags = State(initialValue: selectedTags.wrappedValue)
+        self._draftOwnershipFilter = State(initialValue: ownershipFilter.wrappedValue)
+    }
+
+    private var visibleTags: [String] {
+        let trimmed = tagSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return availableTags }
+        return availableTags.filter { $0.localizedCaseInsensitiveContains(trimmed) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AppBackground()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: AppSpacing.xl) {
+                        ownershipSection
+                        tagsSection
+                    }
+                    .padding(AppSpacing.xl)
+                }
+                .scrollDismissesKeyboard(.interactively)
+            }
+            .navigationTitle("Filter albums")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Reset") {
+                        Haptics.tap()
+                        draftSelectedTags.removeAll()
+                        draftOwnershipFilter = .all
+                        tagSearchText = ""
+                    }
+                    .font(AppFont.subheadline.weight(.semibold))
+                    .foregroundColor(AppColor.inkMuted)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Haptics.success()
+                        selectedTags = draftSelectedTags
+                        ownershipFilter = draftOwnershipFilter
+                        dismiss()
+                    } label: {
+                        Text("Apply")
+                            .font(AppFont.subheadline.weight(.semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(AppGradient.hero))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .sheet(isPresented: $showEditTags) {
+                EditTagsSheet(
+                    availableTags: availableTags,
+                    customTags: customTags,
+                    onAddTag: onAddTag,
+                    onRenameTag: onRenameTag,
+                    onDeleteTag: onDeleteTag
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
+        }
+    }
+
+    private var ownershipSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("OWNERSHIP")
+                .font(AppFont.captionBold)
+                .foregroundColor(AppColor.inkMuted)
+            HStack(spacing: 8) {
+                ForEach(AlbumOwnershipFilter.allCases) { option in
+                    Button {
+                        Haptics.selection()
+                        draftOwnershipFilter = option
+                    } label: {
+                        Text(option.rawValue)
+                            .font(AppFont.subheadline.weight(.semibold))
+                            .foregroundColor(draftOwnershipFilter == option ? .white : AppColor.ink)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(
+                                Capsule().fill(
+                                    draftOwnershipFilter == option
+                                    ? AppColor.primary
+                                    : Color.white.opacity(0.7)
+                                )
+                            )
+                            .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .pressableScale(0.96)
+                }
+            }
+        }
+    }
+
+    private var tagsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("TAGS")
+                .font(AppFont.captionBold)
+                .foregroundColor(AppColor.inkMuted)
+
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(AppColor.inkFaint)
+                    TextField("Search tags", text: $tagSearchText)
+                        .font(AppFont.body)
+                        .autocorrectionDisabled()
+                    if !tagSearchText.isEmpty {
+                        Button {
+                            tagSearchText = ""
+                            Haptics.tap()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(AppColor.inkFaint)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 40)
+                .frame(maxWidth: .infinity)
+                .background(AppColor.surface.opacity(0.86), in: Capsule(style: .continuous))
+                .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.58), lineWidth: 1))
+
+                Button {
+                    Haptics.tap()
+                    showEditTags = true
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.clash(14, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 40, height: 40)
+                        .background(Circle().fill(AppGradient.hero))
+                        .shadow(color: AppColor.primary.opacity(0.3), radius: 6, y: 3)
+                }
+                .buttonStyle(.plain)
+                .pressableScale(0.96)
+            }
+
+            if visibleTags.isEmpty {
+                Text("No matching tags")
+                    .font(AppFont.caption)
+                    .foregroundColor(AppColor.inkFaint)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+            } else {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    ForEach(visibleTags, id: \.self) { tag in
+                        tagPill(tag)
+                    }
+                }
+            }
+        }
+    }
+
+    private func tagPill(_ tag: String) -> some View {
+        let isSelected = draftSelectedTags.contains(tag)
+        return Button {
+            Haptics.selection()
+            if isSelected {
+                draftSelectedTags.remove(tag)
+            } else {
+                draftSelectedTags.insert(tag)
+            }
+        } label: {
+            HStack {
+                Text(tag)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 4)
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.clash(13, weight: .bold))
+                }
+            }
+            .font(AppFont.subheadline.weight(.semibold))
+            .foregroundColor(isSelected ? .white : AppColor.ink)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(
+                Capsule().fill(
+                    isSelected
+                    ? AppColor.tag(tag)
+                    : Color.white.opacity(0.7)
+                )
+            )
+            .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
+            .shadow(color: .black.opacity(0.06), radius: 6, y: 3)
+        }
+        .buttonStyle(.plain)
+        .pressableScale(0.96)
+    }
+}
+
+private struct EditTagsSheet: View {
+    let availableTags: [String]
+    let customTags: [String]
+    let onAddTag: (String) -> Void
+    let onRenameTag: (String, String) -> Void
+    let onDeleteTag: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var newTagText: String = ""
+    @State private var editingTag: String?
+    @State private var editingTagDraft: String = ""
+    @State private var tagPendingDeletion: String?
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AppBackground()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: AppSpacing.l) {
+                        addTagSection
+                        tagListSection
+                    }
+                    .padding(AppSpacing.xl)
+                }
+                .scrollDismissesKeyboard(.interactively)
+            }
+            .navigationTitle("Edit tags")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        Haptics.tap()
+                        dismiss()
+                    }
+                    .font(AppFont.subheadline.weight(.semibold))
+                }
+            }
+            .alert(
+                "Delete tag?",
+                isPresented: Binding(
+                    get: { tagPendingDeletion != nil },
+                    set: { if !$0 { tagPendingDeletion = nil } }
+                ),
+                presenting: tagPendingDeletion
+            ) { tag in
+                Button("Delete", role: .destructive) {
+                    onDeleteTag(tag)
+                    tagPendingDeletion = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    tagPendingDeletion = nil
+                }
+            } message: { tag in
+                Text("Removing \"\(tag)\" will also remove it from every album that uses it.")
+            }
+        }
+    }
+
+    private var addTagSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("ADD NEW TAG")
+                .font(AppFont.captionBold)
+                .foregroundColor(AppColor.inkMuted)
+
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "tag")
+                        .foregroundColor(AppColor.inkFaint)
+                    TextField("Tag name", text: $newTagText)
+                        .font(AppFont.body)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.words)
+                        .onSubmit { commitNewTag() }
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 40)
+                .frame(maxWidth: .infinity)
+                .background(AppColor.surface.opacity(0.86), in: Capsule(style: .continuous))
+                .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.58), lineWidth: 1))
+
+                Button {
+                    commitNewTag()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.clash(14, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 40, height: 40)
+                        .background(Circle().fill(AppGradient.hero))
+                        .shadow(color: AppColor.primary.opacity(0.3), radius: 6, y: 3)
+                }
+                .buttonStyle(.plain)
+                .pressableScale(0.94)
+                .disabled(newTagText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .opacity(newTagText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
+            }
+        }
+    }
+
+    private var tagListSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("ALL TAGS")
+                .font(AppFont.captionBold)
+                .foregroundColor(AppColor.inkMuted)
+
+            if availableTags.isEmpty {
+                Text("No tags yet")
+                    .font(AppFont.caption)
+                    .foregroundColor(AppColor.inkFaint)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(availableTags, id: \.self) { tag in
+                        tagRow(tag)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func tagRow(_ tag: String) -> some View {
+        let isEditing = editingTag == tag
+        HStack(spacing: 10) {
+            Circle()
+                .fill(AppColor.tag(tag))
+                .frame(width: 14, height: 14)
+
+            if isEditing {
+                TextField("Tag name", text: $editingTagDraft)
+                    .font(AppFont.body)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.words)
+                    .onSubmit { commitRename(of: tag) }
+                Button("Save") {
+                    commitRename(of: tag)
+                }
+                .font(AppFont.subheadline.weight(.semibold))
+                .foregroundColor(AppColor.primary)
+                Button {
+                    cancelEditing()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(AppColor.inkFaint)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text(tag)
+                    .font(AppFont.body)
+                    .foregroundColor(AppColor.ink)
+                Spacer(minLength: 4)
+                Button {
+                    Haptics.tap()
+                    editingTag = tag
+                    editingTagDraft = tag
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.clash(13, weight: .semibold))
+                        .foregroundColor(AppColor.inkMuted)
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.plain)
+                Button {
+                    Haptics.warning()
+                    tagPendingDeletion = tag
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.clash(13, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(AppColor.primary.opacity(0.85)))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous)
+                .stroke(Color.white.opacity(0.58), lineWidth: 1)
+        )
+    }
+
+    private func commitNewTag() {
+        let trimmed = newTagText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        onAddTag(trimmed)
+        newTagText = ""
+        Haptics.success()
+    }
+
+    private func commitRename(of original: String) {
+        let trimmed = editingTagDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              trimmed.caseInsensitiveCompare(original) != .orderedSame else {
+            cancelEditing()
+            return
+        }
+        onRenameTag(original, trimmed)
+        Haptics.success()
+        cancelEditing()
+    }
+
+    private func cancelEditing() {
+        editingTag = nil
+        editingTagDraft = ""
     }
 }
 

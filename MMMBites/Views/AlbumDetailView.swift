@@ -25,6 +25,7 @@ struct AlbumDetailView: View {
     @State private var isBubbleCanvasExpanded = false
     @State private var bubbleOffsets: [String: CGSize] = [:]
     @GestureState private var activeBubbleDrag: BubbleDragState? = nil
+    @State private var navigationMemoryID: String?
 
     private struct BubbleDragState: Equatable {
         let id: String
@@ -172,6 +173,22 @@ struct AlbumDetailView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $navigationMemoryID) { id in
+            if let memory = memories.first(where: { $0.id == id }) {
+                MemoryDetailView(
+                    memory: memory,
+                    albumTitle: album.title,
+                    album: album,
+                    similarMemories: similarMemories(for: memory),
+                    onUpdate: { updated in
+                        Task { await memoriesViewModel.update(updated) }
+                    },
+                    onDelete: { deleted in
+                        Task { await memoriesViewModel.remove(deleted) }
+                    }
+                )
+            }
+        }
         .toolbar {
             if canEditAlbum {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -203,7 +220,10 @@ struct AlbumDetailView: View {
         }
         .sheet(isPresented: $showEditAlbum) {
             NavigationStack {
-                AddAlbumView(albumToEdit: album) { updatedAlbum in
+                AddAlbumView(
+                    albumToEdit: album,
+                    existingTags: authViewModel.currentUser?.customTags ?? []
+                ) { updatedAlbum in
                     withAnimation(AppAnimation.snappy) {
                         album = updatedAlbum
                     }
@@ -307,7 +327,7 @@ struct AlbumDetailView: View {
         } else {
             Text(album.title)
                 .font(AppFont.displayLarge)
-                .foregroundStyle(AppGradient.hero)
+                .foregroundStyle(AppGradient.heroText)
         }
     }
 
@@ -435,7 +455,7 @@ struct AlbumDetailView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(album.title)
                     .font(AppFont.headline)
-                    .foregroundStyle(AppGradient.hero)
+                    .foregroundStyle(AppGradient.heroText)
                     .lineLimit(1)
                 Text("\(memories.count) memories")
                     .font(AppFont.tiny)
@@ -636,9 +656,7 @@ struct AlbumDetailView: View {
         let xRange = max(1, contentSize.width - margin * 2)
         let yRange = max(1, contentSize.height - margin * 2)
         let x = margin + stableFraction(for: memory.id, salt: 13) * xRange
-        let verticalStep = min(150, yRange / CGFloat(max(filteredMemories.count, 1)))
-        let yJitter = (stableFraction(for: memory.id, salt: 47) - 0.5) * 92
-        let y = margin + 96 + CGFloat(index) * verticalStep + yJitter
+        let y = margin + stableFraction(for: memory.id, salt: 89) * yRange
 
         return CGPoint(
             x: min(max(x, margin), contentSize.width - margin),
@@ -650,36 +668,19 @@ struct AlbumDetailView: View {
         let size = photoSize(for: memory.id)
         let avatarTrailing = avatarOnTrailing(for: memory.id)
 
-        return NavigationLink {
-            MemoryDetailView(
-                memory: memory,
-                albumTitle: album.title,
-                album: album,
-                similarMemories: similarMemories(for: memory),
-                onUpdate: { updated in
-                    Task {
-                        await memoriesViewModel.update(updated)
-                    }
-                },
-                onDelete: { deleted in
-                    Task {
-                        await memoriesViewModel.remove(deleted)
-                    }
-                }
-            )
-        } label: {
-            VStack(spacing: AppSpacing.s) {
-                memoryPhotoCircle(memory, size: size)
-                memoryTitlePill(memory, avatarTrailing: avatarTrailing)
-                    .padding(.horizontal, 4)
-            }
-            .frame(width: bubbleFrameWidth(for: memory.id))
-            .modifier(FloatingMotion(seed: floatSeed(for: memory.id)))
+        return VStack(spacing: AppSpacing.s) {
+            memoryPhotoCircle(memory, size: size)
+            memoryTitlePill(memory, avatarTrailing: avatarTrailing)
+                .padding(.horizontal, 4)
         }
-        .buttonStyle(.plain)
-        .pressableScale()
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 8)
+        .frame(width: bubbleFrameWidth(for: memory.id))
+        .modifier(FloatingMotion(
+            seed: floatSeed(for: memory.id),
+            isActive: activeBubbleDrag?.id != memory.id
+        ))
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 12)
                 .updating($activeBubbleDrag) { value, state, _ in
                     state = BubbleDragState(id: memory.id, translation: value.translation)
                 }
@@ -692,6 +693,10 @@ struct AlbumDetailView: View {
                     Haptics.soft()
                 }
         )
+        .onTapGesture {
+            Haptics.tap()
+            navigationMemoryID = memory.id
+        }
     }
 
     private func memoryPhotoCircle(_ memory: Memory, size: CGFloat) -> some View {
@@ -812,12 +817,12 @@ struct AlbumDetailView: View {
                         }
                     }
                 } label: {
-                    Text("Start a Meal Memory")
-                        .font(AppFont.captionBold)
+                    Image(systemName: "plus")
+                        .font(.clash(20, weight: .bold))
                         .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(Capsule().fill(AppGradient.hero))
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(AppGradient.hero))
+                        .shadow(color: AppColor.primary.opacity(0.35), radius: 8, y: 4)
                 }
                 .buttonStyle(.plain)
                 .pressableScale()
@@ -832,6 +837,7 @@ struct AlbumDetailView: View {
 // speed and amplitude, so nearby bubbles do not move in lockstep.
 private struct FloatingMotion: ViewModifier {
     let seed: Double
+    var isActive: Bool = true
 
     func body(content: Content) -> some View {
         TimelineView(.animation) { context in
@@ -840,8 +846,9 @@ private struct FloatingMotion: ViewModifier {
             let ySpeed = 0.34 + (seed.truncatingRemainder(dividingBy: 0.22))
             let xAmplitude = 3.5 + CGFloat(seed.truncatingRemainder(dividingBy: 2.6))
             let yAmplitude = 5.0 + CGFloat(seed.truncatingRemainder(dividingBy: 3.4))
-            let dx = CGFloat(sin(t * xSpeed + seed)) * xAmplitude
-            let dy = CGFloat(cos(t * ySpeed + seed * 1.3)) * yAmplitude
+            let activeScale: CGFloat = isActive ? 1.0 : 0.0
+            let dx = CGFloat(sin(t * xSpeed + seed)) * xAmplitude * activeScale
+            let dy = CGFloat(cos(t * ySpeed + seed * 1.3)) * yAmplitude * activeScale
             content.offset(x: dx, y: dy)
         }
     }
