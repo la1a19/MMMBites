@@ -3,7 +3,7 @@
 //  MMMBites
 //
 //  Small MapKit preview shown in Memory Detail View. Tap → open in Apple Maps.
-//
+//.
 
 import SwiftUI
 import MapKit
