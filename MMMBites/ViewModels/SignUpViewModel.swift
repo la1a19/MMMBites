@@ -38,6 +38,11 @@ class SignUpViewModel: ObservableObject {
             return false
         }
 
+        guard password.count >= 6 else {
+            errorMessage = "Password must be at least 6 characters"
+            return false
+        }
+
         isLoading = true
         defer { isLoading = false }
 
@@ -56,15 +61,22 @@ class SignUpViewModel: ObservableObject {
                 "createdAt": FieldValue.serverTimestamp()
             ]
 
-            try await Firestore.firestore()
-                .collection("users")
-                .document(uid)
-                .setData(userData)
+            do {
+                try await Firestore.firestore()
+                    .collection("users")
+                    .document(uid)
+                    .setData(userData)
+            } catch {
+                // Roll back the Auth account so the same email can be reused
+                // on retry — otherwise the user is locked out with an orphan
+                // Auth record and no Firestore profile.
+                try? await result.user.delete()
+                throw error
+            }
 
-            // Firebase auto-signs-in the new user. Sign them out so they have to
-            // log in explicitly with their fresh credentials.
-            try? Auth.auth().signOut()
-
+            // Keep the new user signed in — Firebase auto-signs them in on
+            // createUser and the auth state listener will land them in the
+            // app's main view directly.
             return true
         } catch {
             errorMessage = error.localizedDescription
