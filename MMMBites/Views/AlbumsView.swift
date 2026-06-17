@@ -847,7 +847,7 @@ struct AlbumsView: View {
     private var mapEntryCard: some View {
         discoverCard(
             icon: "map.fill",
-            label: "MAP",
+            label: "MEMORY MAP",
             value: "\(mappedMemoriesCount)",
             subtitle: "on map"
         ) {

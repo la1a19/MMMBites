@@ -14,6 +14,7 @@
 //
 
 import SwiftUI
+import FirebaseFirestore
 
 struct MemoryBoardView: View {
     let memories: [Memory]
@@ -26,6 +27,7 @@ struct MemoryBoardView: View {
     @State private var bubbleRefreshSeed = 0
     @State private var memoryOffsets: [String: CGSize] = [:]
     @State private var gestureStartOffsets: [String: CGSize] = [:]
+    @State private var capturedByUsers: [User] = []
 
     // Canvas pan / zoom (Miro-like infinite board)
     @State private var canvasOffset: CGSize = .zero
@@ -174,7 +176,62 @@ struct MemoryBoardView: View {
                 .padding(.bottom, 40)
             }
             .onAppear(perform: presentInteractionHintIfNeeded)
+            .task(id: capturedByIDs) {
+                await loadCapturedByUsers()
+            }
         }
+    }
+
+    // IDs we need user docs for, so the title pill can show the real username
+    // / avatar instead of an initialised Firebase UID.
+    private var capturedByIDs: [String] {
+        Array(Set(memories.compactMap(\.capturedById))).sorted()
+    }
+
+    private func loadCapturedByUsers() async {
+        let ids = capturedByIDs
+        guard !ids.isEmpty else {
+            capturedByUsers = []
+            return
+        }
+        let database = Firestore.firestore()
+        var loaded: [User] = []
+        for chunk in ids.chunked(into: 30) {
+            do {
+                let snapshot = try await database
+                    .collection("users")
+                    .whereField(FieldPath.documentID(), in: chunk)
+                    .getDocuments()
+                loaded.append(contentsOf: snapshot.documents.compactMap {
+                    try? $0.data(as: User.self)
+                })
+            } catch {
+                print("[MemoryBoardView] user load error: \(error)")
+            }
+        }
+        capturedByUsers = loaded
+    }
+
+    private func userName(for id: String) -> String {
+        if id == authViewModel.currentUser?.id {
+            return authViewModel.currentUser?.username ?? "You"
+        }
+        return capturedByUsers.first(where: { $0.id == id })?.username ?? "Friend"
+    }
+
+    private func userAvatarImage(for id: String) -> Image? {
+        let base64: String?
+        if id == authViewModel.currentUser?.id {
+            base64 = authViewModel.currentUser?.avatarData
+        } else {
+            base64 = capturedByUsers.first(where: { $0.id == id })?.avatarData
+        }
+        guard
+            let base64,
+            let data = Data(base64Encoded: base64),
+            let uiImage = UIImage(data: data)
+        else { return nil }
+        return Image(uiImage: uiImage)
     }
 
     private var boardInteractionHint: some View {
@@ -336,7 +393,6 @@ struct MemoryBoardView: View {
             }
         }
         .buttonStyle(.plain)
-        .pressableScale()
         .simultaneousGesture(
             TapGesture().onEnded {
                 if hasUnseenReaction {
@@ -443,27 +499,41 @@ struct MemoryBoardView: View {
     }
 
     private func memoryTitlePill(_ memory: Memory) -> some View {
-        HStack(spacing: 6) {
-            if let capturedById = memory.capturedById {
-                AvatarView(
-                    initials: capturedById,
-                    size: 22,
-                    showRing: true
-                )
+        let avatarTrailing = avatarOnTrailing(for: memory.id)
+        return HStack(spacing: 6) {
+            if !avatarTrailing, let capturedById = memory.capturedById {
+                avatarChip(for: capturedById)
             }
-
             Text(memory.title)
                 .font(AppFont.subheadline.weight(.semibold))
                 .foregroundColor(AppColor.ink)
                 .lineLimit(1)
                 .truncationMode(.tail)
+            if avatarTrailing, let capturedById = memory.capturedById {
+                avatarChip(for: capturedById)
+            }
         }
-        .padding(.leading, memory.capturedById == nil ? 12 : 6)
-        .padding(.trailing, 12)
+        .padding(.leading, (memory.capturedById != nil && !avatarTrailing) ? 6 : 12)
+        .padding(.trailing, (memory.capturedById != nil && avatarTrailing) ? 6 : 12)
         .padding(.vertical, 5)
         .background(Color.white, in: Capsule(style: .continuous))
         .overlay(Capsule().stroke(Color.white.opacity(0.7), lineWidth: 1))
         .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
+    }
+
+    private func avatarChip(for userID: String) -> some View {
+        AvatarView(
+            avatar: userAvatarImage(for: userID),
+            initials: userName(for: userID),
+            size: 22,
+            showRing: true
+        )
+    }
+
+    // Mirror AlbumDetailView's deterministic side choice so the same memory
+    // shows its avatar on the same side in both views.
+    private func avatarOnTrailing(for id: String) -> Bool {
+        stableHash(id) % 2 == 0
     }
 
     // MARK: - Helpers

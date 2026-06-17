@@ -88,6 +88,12 @@ struct AlbumDetailView: View {
         return memories.filter(memoryMatchesSearch(_:))
     }
 
+    // Memories the current user can't delete (Firestore rules only allow the
+    // memory's creator to delete). Used to block album deletion when present.
+    private var friendMemoriesInAlbum: [Memory] {
+        memories.filter { $0.capturedById != nil && $0.capturedById != currentUserID }
+    }
+
     private var participantIDs: [String] {
         var ids = Set(album.friendIds + memories.flatMap(\.participantIds) + memories.compactMap(\.capturedById))
         ids.insert(album.ownerId)
@@ -278,15 +284,24 @@ struct AlbumDetailView: View {
                 }
             }
         }
-        .alert("Delete album?", isPresented: $showDeleteAlbumConfirmation) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                Haptics.warning()
-                onAlbumDelete?(album)
-                dismiss()
+        .alert(friendMemoriesInAlbum.isEmpty ? "Delete album?" : "Can't delete album", isPresented: $showDeleteAlbumConfirmation) {
+            if friendMemoriesInAlbum.isEmpty {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete", role: .destructive) {
+                    Haptics.warning()
+                    onAlbumDelete?(album)
+                    dismiss()
+                }
+            } else {
+                Button("OK", role: .cancel) { }
             }
         } message: {
-            Text("This will permanently delete \"\(album.title)\" and all \(memories.count) memor\(memories.count == 1 ? "y" : "ies") in it. This can't be undone.")
+            if friendMemoriesInAlbum.isEmpty {
+                Text("This will permanently delete \"\(album.title)\" and all \(memories.count) memor\(memories.count == 1 ? "y" : "ies") in it. This can't be undone.")
+            } else {
+                let count = friendMemoriesInAlbum.count
+                Text("\"\(album.title)\" has \(count) memor\(count == 1 ? "y" : "ies") from friends. Ask them to delete their memor\(count == 1 ? "y" : "ies") first, then you can delete this album.")
+            }
         }
         .task(id: album.id) {
             memoriesViewModel.startListening(forAlbumID: album.id)

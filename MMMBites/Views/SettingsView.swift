@@ -298,8 +298,22 @@ struct SettingsView: View {
             // User profile doc.
             try await database.collection("users").document(uid).delete()
 
-            // Finally tear down the Firebase Auth account.
-            try await user.delete()
+            // Finally tear down the Firebase Auth account. If this fails
+            // (e.g. the reauth token expired between the dialog and now),
+            // the Firestore profile is already gone, so we must not leave
+            // the user in an "isLoggedIn == true but currentUser == nil"
+            // half-deleted state. Force a sign-out and surface a clear
+            // message so they can start fresh.
+            do {
+                try await user.delete()
+            } catch {
+                print("[SettingsView] Auth delete failed after profile delete: \(error)")
+                try? Auth.auth().signOut()
+                await MainActor.run {
+                    deleteErrorMessage = "Your data was deleted, but we couldn't remove your sign-in account. Please sign in again to finish."
+                }
+                return
+            }
 
             // Auth state listener in LoginViewModel will return us to login.
             await MainActor.run { dismiss() }
@@ -421,7 +435,7 @@ struct PrivacyPolicyView: View {
                             Text("MMMBites Privacy Policy")
                                 .font(.clash(24, weight: .bold))
                                 .foregroundColor(AppColor.ink)
-                            Text("Effective date: June 10, 2026")
+                            Text("Effective date: June 17, 2026")
                                 .font(.clash(13, weight: .medium))
                                 .foregroundColor(AppColor.inkMuted)
                             Text("MMMBites is a meal-memory journal that lets you save photos, locations, moods, and notes about meals you eat and share them with friends you choose.")
@@ -443,7 +457,8 @@ struct PrivacyPolicyView: View {
                                 "Account information: email address, username, and optional profile photo.",
                                 "Content you create: photos, albums, tags, memory details, notes, place names, and selected coordinates.",
                                 "Friend connections, QR-code friend actions, username search, and reactions on shared memories.",
-                                "Camera and photo library access only when you trigger features that need them."
+                                "Camera and photo library access only when you trigger features that need them.",
+                                "Photos you upload are temporarily cached on your device so they stay visible while uploads are slow or offline; the cache is cleared once the upload completes."
                             ]
                         )
 
@@ -452,7 +467,7 @@ struct PrivacyPolicyView: View {
                             items: [
                                 "We do not access precise GPS location automatically.",
                                 "We do not collect contacts, calendars, microphone, or health data.",
-                                "We do not run cross-app tracking analytics, show ads, sell data, or rent data."
+                                "Firebase SDKs include built-in diagnostics for app health monitoring. We do not show ads, sell data, rent data, or run cross-app tracking for advertising purposes."
                             ]
                         )
 
@@ -470,8 +485,8 @@ struct PrivacyPolicyView: View {
                             title: "Third-party services",
                             items: [
                                 "MMMBites uses Firebase Authentication for email/password login.",
-                                "Cloud Firestore stores profiles, albums, memories, friend connections, and reactions.",
-                                "Firebase Storage stores photo files attached to memories and profiles.",
+                                "Cloud Firestore stores profiles, albums, memories, friend connections, and reactions. Profile photos are stored directly inside your Firestore user document.",
+                                "Firebase Storage stores photo files attached to memories and album covers.",
                                 "Google's privacy policy is available at https://policies.google.com/privacy."
                             ]
                         )
@@ -479,8 +494,9 @@ struct PrivacyPolicyView: View {
                         policySection(
                             title: "Sharing and retention",
                             items: [
-                                "A memory or album is private until you tag a friend or set it as shared.",
-                                "Removing a tag revokes that friend's access.",
+                                "Memories are shown only to friends you tag or to friends added to a shared album.",
+                                "Removing a friend from a shared album revokes their access to that album and the memories inside it.",
+                                "Unfriending someone also revokes any shared-album access between you and that person.",
                                 "We keep your data for as long as your account exists."
                             ]
                         )
@@ -490,7 +506,8 @@ struct PrivacyPolicyView: View {
                             items: [
                                 "You can view and edit memories, albums, profile fields, and friend connections inside the app.",
                                 "You can delete individual memories or albums from the relevant detail screen.",
-                                "You can delete your account from Settings. This permanently removes your profile, albums, memories, friend requests, and sign-in credentials.",
+                                "You can delete your account from Settings. Because this build is intended for in-person showcase testing, we apply a strict deletion policy: tapping delete removes your profile, the albums you created, the memories you captured, and friend requests involving you, and signs you out of the app.",
+                                "By design, when you delete your account the albums you created are removed as a whole. Meals that friends added inside those albums become inaccessible to everyone once the parent album is gone; a small inactive record may remain on our servers but cannot be viewed by any user. This lets testers walk up to the booth, sign up, try the app, and leave with nothing about them remaining accessible.",
                                 "For legal requests such as export or correction, contact lemonmint28@gmail.com."
                             ]
                         )
@@ -590,7 +607,7 @@ struct TermsOfServiceView: View {
                             Text("MMMBites Terms")
                                 .font(.clash(24, weight: .bold))
                                 .foregroundColor(AppColor.ink)
-                            Text("Effective date: June 10, 2026")
+                            Text("Effective date: June 17, 2026")
                                 .font(.clash(13, weight: .medium))
                                 .foregroundColor(AppColor.inkMuted)
                             Text("By using MMMBites, you agree to use the app respectfully and only upload content you have the right to save or share.")

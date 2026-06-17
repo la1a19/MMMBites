@@ -269,8 +269,16 @@ final class AlbumsViewModel: ObservableObject {
         } catch {
             print("[AlbumsViewModel] remove error: \(error)")
             if !PhotoStorage.isMissingObjectError(error) {
-                errorMessage = error.localizedDescription
-                ToastCenter.shared.showError("Couldn't delete album. Try again.")
+                let nsError = error as NSError
+                let isPermissionDenied = nsError.domain == FirestoreErrorDomain
+                    && nsError.code == FirestoreErrorCode.permissionDenied.rawValue
+                if isPermissionDenied {
+                    errorMessage = "This album has memories from friends. Ask them to delete their memories first, then try again."
+                    ToastCenter.shared.showError("Friends' memories must be deleted first.")
+                } else {
+                    errorMessage = error.localizedDescription
+                    ToastCenter.shared.showError("Couldn't delete album. Try again.")
+                }
             }
         }
     }

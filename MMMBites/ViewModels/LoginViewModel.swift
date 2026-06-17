@@ -24,6 +24,7 @@ class LoginViewModel: ObservableObject {
     @Published var outgoingRequests: [FriendRequest] = []
 
     private var authStateHandle: AuthStateDidChangeListenerHandle?
+    private var currentUserListener: ListenerRegistration?
     private var incomingRequestListener: ListenerRegistration?
     private var outgoingRequestListener: ListenerRegistration?
     private var activeSessionUserID: String?
@@ -38,13 +39,14 @@ class LoginViewModel: ObservableObject {
                 self?.isLoggedIn = (user != nil)
                 if let uid = user?.uid {
                     self?.startLoginSessionIfNeeded(for: uid)
-                    await self?.fetchCurrentUser(uid: uid)
+                    self?.startCurrentUserListener(for: uid)
                     self?.startFriendRequestListeners(for: uid)
                 } else {
                     self?.activeSessionUserID = nil
                     self?.memoryBoardHintSeenUserIDsForSession.removeAll()
                     self?.currentUser = nil
                     self?.friendSearchResults = []
+                    self?.stopCurrentUserListener()
                     self?.stopFriendRequestListeners()
                 }
             }
@@ -65,48 +67,56 @@ class LoginViewModel: ObservableObject {
         return true
     }
 
-    private func fetchCurrentUser(uid: String) async {
-        // Sign-ups race the auth state listener: createUser fires the listener
-        // immediately, but the Firestore user doc is written a moment later.
-        // Retry a few times so a brand-new account doesn't land in the app
-        // with currentUser unset.
-        for attempt in 0..<4 {
-            do {
-                let snapshot = try await database
-                    .collection("users")
-                    .document(uid)
-                    .getDocument()
-                if snapshot.exists {
-                    var user = try snapshot.data(as: User.self)
-                    // Backfill the email field if it was missing on older docs.
-                    if user.email == nil, let authEmail = Auth.auth().currentUser?.email {
-                        user.email = authEmail
-                        try? await database
-                            .collection("users")
-                            .document(uid)
-                            .setData(["email": authEmail], merge: true)
+    // Real-time listener for the signed-in user's own profile doc. Replaces
+    // a one-shot fetch so that changes made by other clients — most notably
+    // friend accepts that mutate this user's `friendIDs` — show up live
+    // without requiring a logout/login.
+    private func startCurrentUserListener(for uid: String) {
+        currentUserListener?.remove()
+        currentUserListener = database
+            .collection("users")
+            .document(uid)
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let error {
+                        print("[LoginViewModel] current user listen error: \(error)")
+                        return
                     }
-                    currentUser = user
-                    return
+                    guard let snapshot, snapshot.exists else {
+                        // Sign-up race: the auth listener fires before the
+                        // Firestore doc is written. The listener keeps watching
+                        // and will populate `currentUser` once the doc appears.
+                        return
+                    }
+                    do {
+                        var user = try snapshot.data(as: User.self)
+                        // Backfill the email field if it was missing on older docs.
+                        if user.email == nil, let authEmail = Auth.auth().currentUser?.email {
+                            user.email = authEmail
+                            try? await self.database
+                                .collection("users")
+                                .document(uid)
+                                .setData(["email": authEmail], merge: true)
+                        }
+                        self.currentUser = user
+                    } catch {
+                        print("[LoginViewModel] current user decode error: \(error)")
+                    }
                 }
-            } catch {
-                errorMessage = "Couldn't load user profile: \(error.localizedDescription)"
-                return
             }
+    }
 
-            if attempt < 3 {
-                try? await Task.sleep(nanoseconds: 250_000_000)
-            }
-        }
-        // Doc never appeared. Leave currentUser nil silently — surfacing an
-        // error here would also fire on legitimate edge cases (e.g. a
-        // half-cleaned-up account) and isn't actionable for the user.
+    private func stopCurrentUserListener() {
+        currentUserListener?.remove()
+        currentUserListener = nil
     }
 
     deinit {
         if let handle = authStateHandle {
             Auth.auth().removeStateDidChangeListener(handle)
         }
+        currentUserListener?.remove()
         incomingRequestListener?.remove()
         outgoingRequestListener?.remove()
     }
@@ -397,12 +407,50 @@ class LoginViewModel: ObservableObject {
                 return nil
             }
 
+            // Best-effort revoke shared-album access on both sides. Not atomic
+            // with the friendship removal — if any per-album write fails, the
+            // friendship is still gone and the user can retry by unfriending
+            // again. Without this step the ex-friend would keep seeing every
+            // shared album and its memories.
+            await revokeSharedAlbumAccess(currentUserID: currentUserID, friendID: friendID)
+
             currentUser?.friendIDs.removeAll { $0 == friendID }
             friendSearchResults.removeAll { $0.id == friendID }
             friendSearchMessage = "Removed \(user.username)"
         } catch {
             friendSearchMessage = error.localizedDescription
             ToastCenter.shared.showError("Couldn't remove friend. Try again.")
+        }
+    }
+
+    private func revokeSharedAlbumAccess(currentUserID: String, friendID: String) async {
+        do {
+            // My owned albums that include the friend — remove them. I'm owner
+            // so the rule allows arbitrary friendIds edits.
+            let myAlbums = try await database.collection("albums")
+                .whereField("ownerId", isEqualTo: currentUserID)
+                .getDocuments()
+            for doc in myAlbums.documents {
+                let friendIds = (doc.data()["friendIds"] as? [String]) ?? []
+                guard friendIds.contains(friendID) else { continue }
+                try? await doc.reference.updateData([
+                    "friendIds": FieldValue.arrayRemove([friendID])
+                ])
+            }
+
+            // Albums I'm a friend on, owned by the friend — remove myself. Rule
+            // allows self-removal from any album's friendIds.
+            let sharedAlbums = try await database.collection("albums")
+                .whereField("friendIds", arrayContains: currentUserID)
+                .getDocuments()
+            for doc in sharedAlbums.documents {
+                guard (doc.data()["ownerId"] as? String) == friendID else { continue }
+                try? await doc.reference.updateData([
+                    "friendIds": FieldValue.arrayRemove([currentUserID])
+                ])
+            }
+        } catch {
+            print("[LoginViewModel] revoke shared album access error: \(error)")
         }
     }
 
