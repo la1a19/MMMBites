@@ -9,8 +9,6 @@ import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
 import Combine
-import AuthenticationServices
-import CryptoKit
 
 @MainActor
 class LoginViewModel: ObservableObject {
@@ -26,6 +24,7 @@ class LoginViewModel: ObservableObject {
     @Published var outgoingRequests: [FriendRequest] = []
 
     private var authStateHandle: AuthStateDidChangeListenerHandle?
+    private var currentUserListener: ListenerRegistration?
     private var incomingRequestListener: ListenerRegistration?
     private var outgoingRequestListener: ListenerRegistration?
     private var activeSessionUserID: String?
@@ -40,13 +39,14 @@ class LoginViewModel: ObservableObject {
                 self?.isLoggedIn = (user != nil)
                 if let uid = user?.uid {
                     self?.startLoginSessionIfNeeded(for: uid)
-                    await self?.fetchCurrentUser(uid: uid)
+                    self?.startCurrentUserListener(for: uid)
                     self?.startFriendRequestListeners(for: uid)
                 } else {
                     self?.activeSessionUserID = nil
                     self?.memoryBoardHintSeenUserIDsForSession.removeAll()
                     self?.currentUser = nil
                     self?.friendSearchResults = []
+                    self?.stopCurrentUserListener()
                     self?.stopFriendRequestListeners()
                 }
             }
@@ -67,33 +67,56 @@ class LoginViewModel: ObservableObject {
         return true
     }
 
-    private func fetchCurrentUser(uid: String) async {
-        do {
-            let snapshot = try await database
-                .collection("users")
-                .document(uid)
-                .getDocument()
-            var user = try snapshot.data(as: User.self)
-            // Older user docs (especially first-time Apple sign-ins) sometimes
-            // miss the email field. Fall back to Firebase Auth's email so the
-            // profile UI shows it, and backfill the Firestore doc.
-            if user.email == nil, let authEmail = Auth.auth().currentUser?.email {
-                user.email = authEmail
-                try? await database
-                    .collection("users")
-                    .document(uid)
-                    .setData(["email": authEmail], merge: true)
+    // Real-time listener for the signed-in user's own profile doc. Replaces
+    // a one-shot fetch so that changes made by other clients — most notably
+    // friend accepts that mutate this user's `friendIDs` — show up live
+    // without requiring a logout/login.
+    private func startCurrentUserListener(for uid: String) {
+        currentUserListener?.remove()
+        currentUserListener = database
+            .collection("users")
+            .document(uid)
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let error {
+                        print("[LoginViewModel] current user listen error: \(error)")
+                        return
+                    }
+                    guard let snapshot, snapshot.exists else {
+                        // Sign-up race: the auth listener fires before the
+                        // Firestore doc is written. The listener keeps watching
+                        // and will populate `currentUser` once the doc appears.
+                        return
+                    }
+                    do {
+                        var user = try snapshot.data(as: User.self)
+                        // Backfill the email field if it was missing on older docs.
+                        if user.email == nil, let authEmail = Auth.auth().currentUser?.email {
+                            user.email = authEmail
+                            try? await self.database
+                                .collection("users")
+                                .document(uid)
+                                .setData(["email": authEmail], merge: true)
+                        }
+                        self.currentUser = user
+                    } catch {
+                        print("[LoginViewModel] current user decode error: \(error)")
+                    }
+                }
             }
-            currentUser = user
-        } catch {
-            errorMessage = "Couldn't load user profile: \(error.localizedDescription)"
-        }
+    }
+
+    private func stopCurrentUserListener() {
+        currentUserListener?.remove()
+        currentUserListener = nil
     }
 
     deinit {
         if let handle = authStateHandle {
             Auth.auth().removeStateDidChangeListener(handle)
         }
+        currentUserListener?.remove()
         incomingRequestListener?.remove()
         outgoingRequestListener?.remove()
     }
@@ -142,139 +165,14 @@ class LoginViewModel: ObservableObject {
     func login(email: String, password: String) async {
         errorMessage = ""
         passwordResetSent = false
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
-            try await Auth.auth().signIn(withEmail: email, password: password)
+            try await Auth.auth().signIn(withEmail: trimmedEmail, password: password)
         } catch {
             errorMessage = error.localizedDescription
             showError = true
         }
     }
-
-    // MARK: - Sign in with Apple
-
-    /// Configure the `ASAuthorizationAppleIDRequest` produced by SignInWithAppleButton.
-    /// Stashes the raw nonce on the VM so `handleAppleSignIn` can use it later.
-    func prepareAppleRequest(_ request: ASAuthorizationAppleIDRequest) {
-        let rawNonce = Self.makeAppleNonce()
-        currentNonce = rawNonce
-        request.requestedScopes = [.fullName, .email]
-        request.nonce = Self.sha256(rawNonce)
-    }
-
-    private static func makeAppleNonce(length: Int = 32) -> String {
-        precondition(length > 0)
-        let charset: [Character] =
-            Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._")
-        var remaining = length
-        var result = ""
-        while remaining > 0 {
-            var random: UInt8 = 0
-            let status = SecRandomCopyBytes(kSecRandomDefault, 1, &random)
-            if status != errSecSuccess { continue }
-            if random < charset.count {
-                result.append(charset[Int(random)])
-                remaining -= 1
-            }
-        }
-        return result
-    }
-
-    private static func sha256(_ input: String) -> String {
-        let inputData = Data(input.utf8)
-        return SHA256.hash(data: inputData)
-            .map { String(format: "%02x", $0) }
-            .joined()
-    }
-
-    /// Bridge the Apple credential into Firebase. On first sign-in, creates the
-    /// user document so the rest of the app sees a real profile.
-    func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) async {
-        errorMessage = ""
-
-        switch result {
-        case .failure(let error):
-            // User canceling is not an error worth surfacing.
-            if (error as NSError).code == ASAuthorizationError.canceled.rawValue {
-                return
-            }
-            errorMessage = error.localizedDescription
-            showError = true
-
-        case .success(let authorization):
-            guard
-                let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
-                let rawNonce = currentNonce,
-                let identityTokenData = credential.identityToken,
-                let identityTokenString = String(data: identityTokenData, encoding: .utf8)
-            else {
-                errorMessage = "Couldn't read Apple credentials."
-                showError = true
-                return
-            }
-
-            let firebaseCredential = OAuthProvider.appleCredential(
-                withIDToken: identityTokenString,
-                rawNonce: rawNonce,
-                fullName: credential.fullName
-            )
-
-            do {
-                let authResult = try await Auth.auth().signIn(with: firebaseCredential)
-                await ensureUserDocument(
-                    for: authResult.user,
-                    fullName: credential.fullName,
-                    emailFallback: credential.email
-                )
-            } catch {
-                errorMessage = error.localizedDescription
-                showError = true
-            }
-
-            currentNonce = nil
-        }
-    }
-
-    /// Create the Firestore user doc on first Apple sign-in (no-op if already
-    /// present). Apple only returns the full name on the very first call, so we
-    /// pick the best guess from what is available.
-    private func ensureUserDocument(
-        for user: FirebaseAuth.User,
-        fullName: PersonNameComponents?,
-        emailFallback: String?
-    ) async {
-        let docRef = database.collection("users").document(user.uid)
-        do {
-            let snapshot = try await docRef.getDocument()
-            if snapshot.exists { return }
-
-            let formatter = PersonNameComponentsFormatter()
-            let derivedName = fullName.map { formatter.string(from: $0) } ?? ""
-            let username: String
-            if !derivedName.trimmingCharacters(in: .whitespaces).isEmpty {
-                username = derivedName
-            } else if let email = user.email ?? emailFallback,
-                      let local = email.split(separator: "@").first {
-                username = String(local)
-            } else {
-                username = "User-\(user.uid.prefix(4))"
-            }
-
-            let newUser = User(
-                id: user.uid,
-                username: username,
-                email: user.email ?? emailFallback,
-                friendIDs: [],
-                customTags: []
-            )
-            try docRef.setData(from: newUser)
-        } catch {
-            // Document creation failure shouldn't block sign-in; user can edit
-            // their profile later.
-            print("[LoginViewModel] failed to create user doc: \(error)")
-        }
-    }
-
-    private var currentNonce: String?
 
     func forgotPassword(email: String) async {
         errorMessage = ""
@@ -287,11 +185,16 @@ class LoginViewModel: ObservableObject {
         }
         do {
             try await Auth.auth().sendPasswordReset(withEmail: trimmed)
-            passwordResetSent = true
-        } catch {
-            errorMessage = error.localizedDescription
-            showError = true
+        } catch let error as NSError {
+            // Silently treat "user not found" as success — surfacing it would
+            // let anyone enumerate which emails are registered.
+            if error.code != AuthErrorCode.userNotFound.rawValue {
+                errorMessage = error.localizedDescription
+                showError = true
+                return
+            }
         }
+        passwordResetSent = true
     }
 
     func searchUsers(matching query: String) async {
@@ -504,12 +407,50 @@ class LoginViewModel: ObservableObject {
                 return nil
             }
 
+            // Best-effort revoke shared-album access on both sides. Not atomic
+            // with the friendship removal — if any per-album write fails, the
+            // friendship is still gone and the user can retry by unfriending
+            // again. Without this step the ex-friend would keep seeing every
+            // shared album and its memories.
+            await revokeSharedAlbumAccess(currentUserID: currentUserID, friendID: friendID)
+
             currentUser?.friendIDs.removeAll { $0 == friendID }
             friendSearchResults.removeAll { $0.id == friendID }
             friendSearchMessage = "Removed \(user.username)"
         } catch {
             friendSearchMessage = error.localizedDescription
             ToastCenter.shared.showError("Couldn't remove friend. Try again.")
+        }
+    }
+
+    private func revokeSharedAlbumAccess(currentUserID: String, friendID: String) async {
+        do {
+            // My owned albums that include the friend — remove them. I'm owner
+            // so the rule allows arbitrary friendIds edits.
+            let myAlbums = try await database.collection("albums")
+                .whereField("ownerId", isEqualTo: currentUserID)
+                .getDocuments()
+            for doc in myAlbums.documents {
+                let friendIds = (doc.data()["friendIds"] as? [String]) ?? []
+                guard friendIds.contains(friendID) else { continue }
+                try? await doc.reference.updateData([
+                    "friendIds": FieldValue.arrayRemove([friendID])
+                ])
+            }
+
+            // Albums I'm a friend on, owned by the friend — remove myself. Rule
+            // allows self-removal from any album's friendIds.
+            let sharedAlbums = try await database.collection("albums")
+                .whereField("friendIds", arrayContains: currentUserID)
+                .getDocuments()
+            for doc in sharedAlbums.documents {
+                guard (doc.data()["ownerId"] as? String) == friendID else { continue }
+                try? await doc.reference.updateData([
+                    "friendIds": FieldValue.arrayRemove([currentUserID])
+                ])
+            }
+        } catch {
+            print("[LoginViewModel] revoke shared album access error: \(error)")
         }
     }
 

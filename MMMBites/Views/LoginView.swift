@@ -5,7 +5,6 @@
 
 import SwiftUI
 import FirebaseAuth
-import AuthenticationServices
 
 struct LoginView: View {
     @State private var rememberPassword = false
@@ -74,27 +73,6 @@ struct LoginView: View {
                     }
                     .padding(.horizontal, AppSpacing.xxxl)
                     .bounceOnAppear(delay: 0.2)
-
-                    // Divider with social-style note
-                    HStack(spacing: AppSpacing.s) {
-                        Rectangle().fill(AppColor.inkFaint.opacity(0.3)).frame(height: 1)
-                        Text("OR")
-                            .font(AppFont.tiny)
-                            .foregroundColor(AppColor.inkFaint)
-                        Rectangle().fill(AppColor.inkFaint.opacity(0.3)).frame(height: 1)
-                    }
-                    .padding(.horizontal, AppSpacing.xxxl)
-
-                    // Sign in with Apple (TestFlight requirement)
-                    SignInWithAppleButton(.signIn) { request in
-                        viewModel.prepareAppleRequest(request)
-                    } onCompletion: { result in
-                        Task { await viewModel.handleAppleSignIn(result) }
-                    }
-                    .signInWithAppleButtonStyle(.black)
-                    .frame(height: 52)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .padding(.horizontal, AppSpacing.xxxl)
 
                     // Sign up
                     HStack(spacing: 4) {
@@ -220,22 +198,25 @@ struct ForgotPasswordSheet: View {
 
         do {
             try await Auth.auth().sendPasswordReset(withEmail: trimmed)
-            Haptics.success()
-            isSuccess = true
-            message = "Password reset email sent. Check your inbox."
         } catch let error as NSError {
-            Haptics.warning()
-            isSuccess = false
-            message = readableResetError(error)
+            // Silently treat "user not found" as success — surfacing it would
+            // let anyone enumerate which emails are registered.
+            if error.code != AuthErrorCode.userNotFound.rawValue {
+                Haptics.warning()
+                isSuccess = false
+                message = readableResetError(error)
+                return
+            }
         }
+        Haptics.success()
+        isSuccess = true
+        message = "If an account exists for this email, a reset link has been sent. Check your inbox."
     }
 
     private func readableResetError(_ error: NSError) -> String {
         switch error.code {
         case AuthErrorCode.invalidEmail.rawValue:
             return "Enter a valid email address."
-        case AuthErrorCode.userNotFound.rawValue:
-            return "No account was found for this email."
         case AuthErrorCode.networkError.rawValue:
             return "Network error. Check your connection and try again."
         default:

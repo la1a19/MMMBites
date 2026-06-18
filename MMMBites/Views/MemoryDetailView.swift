@@ -162,15 +162,15 @@ struct MemoryDetailView: View {
                     ) {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
-                    Button {
-                        toggleFavourite()
-                    } label: {
-                        Label(
-                            isFavourite ? "Remove from favourites" : "Add to favourites",
-                            systemImage: isFavourite ? "heart.slash" : "heart"
-                        )
-                    }
                     if canEditMemory {
+                        Button {
+                            toggleFavourite()
+                        } label: {
+                            Label(
+                                isFavourite ? "Remove from favourites" : "Add to favourites",
+                                systemImage: isFavourite ? "heart.slash" : "heart"
+                            )
+                        }
                         Button(role: .destructive) {
                             Haptics.warning()
                             showDeleteMemoryConfirmation = true
@@ -228,7 +228,7 @@ struct MemoryDetailView: View {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
                 Haptics.warning()
-                onDelete?(memory)
+                performDelete()
                 dismiss()
             }
         } message: {
@@ -339,7 +339,7 @@ private extension MemoryDetailView {
     }
 
     func friendName(for id: String) -> String {
-        friendUsers.first(where: { $0.id == id })?.username ?? id
+        friendUsers.first(where: { $0.id == id })?.username ?? "Deleted user"
     }
 
     func friendAvatarImage(for id: String) -> Image? {
@@ -416,16 +416,90 @@ private extension MemoryDetailView {
             reactions.append(Reaction(userId: currentUserID, emoji: emoji))
             memory.reactions = reactions
         }
-        commitMemoryUpdate()
+        commitReactionsUpdate()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             bumpedEmoji = nil
         }
     }
 
+    // Field-targeted write so non-owners (friends) can react too. The Firestore
+    // rule only allows non-owners to update memories when the diff is exactly
+    // `reactions` + `updatedAt`, so we avoid `setData(from:merge:)` here.
+    func commitReactionsUpdate() {
+        let now = Date()
+        memory.updatedAt = now
+        let id = memory.id
+        let payload: [[String: String]] = reactions.map { reaction in
+            ["id": reaction.id, "userId": reaction.userId, "emoji": reaction.emoji]
+        }
+        Task {
+            do {
+                try await Firestore.firestore()
+                    .collection("memories")
+                    .document(id)
+                    .updateData([
+                        "reactions": payload,
+                        "updatedAt": Timestamp(date: now)
+                    ])
+            } catch {
+                print("[MemoryDetailView] reaction update error: \(error)")
+                await MainActor.run {
+                    ToastCenter.shared.showError("Couldn't save reaction. Try again.")
+                }
+            }
+        }
+    }
+
+    // Most entry points to MemoryDetailView (board, throwback, search, map,
+    // best bites, profile, similar memories) don't pass an `onDelete`. Without
+    // this fallback, the destructive button would just dismiss the sheet and
+    // leave the Firestore doc + photos intact.
+    func performDelete() {
+        if let onDelete {
+            onDelete(memory)
+            return
+        }
+        let id = memory.id
+        Task {
+            do {
+                try await Firestore.firestore()
+                    .collection("memories")
+                    .document(id)
+                    .delete()
+                await PhotoStorage.deleteMemoryPhotos(memoryID: id)
+                LocalPhotoCache.clearMemoryPhotos(memoryID: id)
+            } catch {
+                print("[MemoryDetailView] memory delete error: \(error)")
+                await MainActor.run {
+                    ToastCenter.shared.showError("Couldn't delete memory. Try again.")
+                }
+            }
+        }
+    }
+
     func clearFriendMemorableTagsIfNeeded() {
+        // Only the memory's owner is allowed to touch fields other than
+        // `reactions`/`updatedAt` (see Firestore rules). Skipping cleanup on
+        // a friend's memory also avoids mutating local `friendMemorableTags`,
+        // which would otherwise pollute the diff of a later reaction write
+        // and trip the `hasOnly(['reactions','updatedAt'])` rule.
+        guard memory.capturedById == currentUserID else { return }
         guard !(memory.friendMemorableTags ?? []).isEmpty else { return }
         memory.friendMemorableTags = []
-        commitMemoryUpdate()
+        let id = memory.id
+        Task {
+            do {
+                try await Firestore.firestore()
+                    .collection("memories")
+                    .document(id)
+                    .updateData([
+                        "friendMemorableTags": [],
+                        "updatedAt": Timestamp(date: Date())
+                    ])
+            } catch {
+                print("[MemoryDetailView] friend tag cleanup error: \(error)")
+            }
+        }
     }
 
     func triggerDoubleTapLove() {

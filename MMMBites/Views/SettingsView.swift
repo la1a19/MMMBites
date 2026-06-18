@@ -8,8 +8,6 @@
 import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
-import AuthenticationServices
-import CryptoKit
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -28,6 +26,7 @@ struct SettingsView: View {
     @State private var showTermsOfService = false
     @State private var showChangePasswordSheet = false
     @State private var showDeleteConfirm = false
+    @State private var showDeleteReauthSheet = false
     @State private var isDeletingAccount = false
     @State private var deleteErrorMessage: String?
 
@@ -107,10 +106,17 @@ struct SettingsView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
+            .sheet(isPresented: $showDeleteReauthSheet) {
+                DeleteAccountReauthSheet {
+                    await deleteAccount()
+                }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
             .alert("Delete account?", isPresented: $showDeleteConfirm) {
                 Button("Cancel", role: .cancel) { }
                 Button("Delete", role: .destructive) {
-                    Task { await deleteAccount() }
+                    showDeleteReauthSheet = true
                 }
             } message: {
                 Text("This permanently removes your profile, albums, memories, and friend connections. This action cannot be undone.")
@@ -228,8 +234,6 @@ struct SettingsView: View {
         let database = Firestore.firestore()
 
         do {
-            try await revokeAppleTokenIfNeeded(for: user)
-
             // Albums owned by the user (memories under each are unowned-cascade
             // dropped here too).
             let albumsSnap = try await database.collection("albums")
@@ -268,39 +272,56 @@ struct SettingsView: View {
                 try await doc.reference.delete()
             }
 
+            // Active relationships referencing this user — friendships in
+            // other users' docs and shared-album access lists. Memory
+            // participantIds, reactions, and friendMemorableTags are left
+            // intact intentionally: those are historical facts about meals
+            // that happened, not active permissions.
+            let friendsSnap = try await database.collection("users")
+                .whereField("friendIDs", arrayContains: uid)
+                .getDocuments()
+            for doc in friendsSnap.documents {
+                try await doc.reference.updateData([
+                    "friendIDs": FieldValue.arrayRemove([uid])
+                ])
+            }
+
+            let sharedAlbumsSnap = try await database.collection("albums")
+                .whereField("friendIds", arrayContains: uid)
+                .getDocuments()
+            for doc in sharedAlbumsSnap.documents {
+                try await doc.reference.updateData([
+                    "friendIds": FieldValue.arrayRemove([uid])
+                ])
+            }
+
             // User profile doc.
             try await database.collection("users").document(uid).delete()
 
-            // Finally tear down the Firebase Auth account.
-            try await user.delete()
+            // Finally tear down the Firebase Auth account. If this fails
+            // (e.g. the reauth token expired between the dialog and now),
+            // the Firestore profile is already gone, so we must not leave
+            // the user in an "isLoggedIn == true but currentUser == nil"
+            // half-deleted state. Force a sign-out and surface a clear
+            // message so they can start fresh.
+            do {
+                try await user.delete()
+            } catch {
+                print("[SettingsView] Auth delete failed after profile delete: \(error)")
+                try? Auth.auth().signOut()
+                await MainActor.run {
+                    deleteErrorMessage = "Your data was deleted, but we couldn't remove your sign-in account. Please sign in again to finish."
+                }
+                return
+            }
 
             // Auth state listener in LoginViewModel will return us to login.
             await MainActor.run { dismiss() }
         } catch let error as NSError {
             await MainActor.run {
-                if error.code == AuthErrorCode.requiresRecentLogin.rawValue {
-                    deleteErrorMessage = "For security, please sign out and sign back in within the last few minutes, then try deleting again."
-                } else {
-                    deleteErrorMessage = "Could not finish deleting your account: \(error.localizedDescription)"
-                }
+                deleteErrorMessage = "Could not finish deleting your account: \(error.localizedDescription)"
             }
         }
-    }
-
-    private func revokeAppleTokenIfNeeded(for user: FirebaseAuth.User) async throws {
-        let usesAppleSignIn = user.providerData.contains { provider in
-            provider.providerID == "apple.com"
-        }
-        guard usesAppleSignIn else { return }
-
-        let credential = try await AppleAccountDeletionAuthorizer().credential()
-        let firebaseCredential = OAuthProvider.appleCredential(
-            withIDToken: credential.identityToken,
-            rawNonce: credential.rawNonce,
-            fullName: nil
-        )
-        try await user.reauthenticate(with: firebaseCredential)
-        try await Auth.auth().revokeToken(withAuthorizationCode: credential.authorizationCode)
     }
 
     // MARK: - Building blocks
@@ -395,108 +416,6 @@ struct SettingsView: View {
     }
 }
 
-private struct AppleDeletionCredential {
-    let identityToken: String
-    let authorizationCode: String
-    let rawNonce: String
-}
-
-@MainActor
-private final class AppleAccountDeletionAuthorizer: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
-    private var continuation: CheckedContinuation<AppleDeletionCredential, Error>?
-    private var rawNonce: String?
-
-    func credential() async throws -> AppleDeletionCredential {
-        try await withCheckedThrowingContinuation { continuation in
-            let rawNonce = Self.makeNonce()
-            self.rawNonce = rawNonce
-            self.continuation = continuation
-
-            let request = ASAuthorizationAppleIDProvider().createRequest()
-            request.requestedScopes = []
-            request.nonce = Self.sha256(rawNonce)
-
-            let controller = ASAuthorizationController(authorizationRequests: [request])
-            controller.delegate = self
-            controller.presentationContextProvider = self
-            controller.performRequests()
-        }
-    }
-
-    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
-        guard let appleCredential = authorization.credential as? ASAuthorizationAppleIDCredential,
-              let identityTokenData = appleCredential.identityToken,
-              let identityToken = String(data: identityTokenData, encoding: .utf8),
-              let authorizationCodeData = appleCredential.authorizationCode,
-              let authorizationCode = String(data: authorizationCodeData, encoding: .utf8),
-              let rawNonce else {
-            finish(with: AuthError.missingAppleCredential)
-            return
-        }
-
-        finish(with: AppleDeletionCredential(
-            identityToken: identityToken,
-            authorizationCode: authorizationCode,
-            rawNonce: rawNonce
-        ))
-    }
-
-    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
-        finish(with: error)
-    }
-
-    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-            .first { $0.isKeyWindow } ?? ASPresentationAnchor()
-    }
-
-    private func finish(with credential: AppleDeletionCredential) {
-        continuation?.resume(returning: credential)
-        continuation = nil
-        rawNonce = nil
-    }
-
-    private func finish(with error: Error) {
-        continuation?.resume(throwing: error)
-        continuation = nil
-        rawNonce = nil
-    }
-
-    private static func makeNonce(length: Int = 32) -> String {
-        precondition(length > 0)
-        let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._")
-        var remaining = length
-        var result = ""
-
-        while remaining > 0 {
-            var random: UInt8 = 0
-            let status = SecRandomCopyBytes(kSecRandomDefault, 1, &random)
-            if status == errSecSuccess, random < charset.count {
-                result.append(charset[Int(random)])
-                remaining -= 1
-            }
-        }
-
-        return result
-    }
-
-    private static func sha256(_ input: String) -> String {
-        SHA256.hash(data: Data(input.utf8))
-            .map { String(format: "%02x", $0) }
-            .joined()
-    }
-
-    private enum AuthError: LocalizedError {
-        case missingAppleCredential
-
-        var errorDescription: String? {
-            "Couldn't read Apple credentials."
-        }
-    }
-}
-
 // MARK: - Privacy policy
 
 struct PrivacyPolicyView: View {
@@ -516,7 +435,7 @@ struct PrivacyPolicyView: View {
                             Text("MMMBites Privacy Policy")
                                 .font(.clash(24, weight: .bold))
                                 .foregroundColor(AppColor.ink)
-                            Text("Effective date: June 10, 2026")
+                            Text("Effective date: June 17, 2026")
                                 .font(.clash(13, weight: .medium))
                                 .foregroundColor(AppColor.inkMuted)
                             Text("MMMBites is a meal-memory journal that lets you save photos, locations, moods, and notes about meals you eat and share them with friends you choose.")
@@ -538,7 +457,8 @@ struct PrivacyPolicyView: View {
                                 "Account information: email address, username, and optional profile photo.",
                                 "Content you create: photos, albums, tags, memory details, notes, place names, and selected coordinates.",
                                 "Friend connections, QR-code friend actions, username search, and reactions on shared memories.",
-                                "Camera and photo library access only when you trigger features that need them."
+                                "Camera and photo library access only when you trigger features that need them.",
+                                "Photos you upload are temporarily cached on your device so they stay visible while uploads are slow or offline; the cache is cleared once the upload completes."
                             ]
                         )
 
@@ -547,7 +467,7 @@ struct PrivacyPolicyView: View {
                             items: [
                                 "We do not access precise GPS location automatically.",
                                 "We do not collect contacts, calendars, microphone, or health data.",
-                                "We do not run cross-app tracking analytics, show ads, sell data, or rent data."
+                                "Firebase SDKs include built-in diagnostics for app health monitoring. We do not show ads, sell data, rent data, or run cross-app tracking for advertising purposes."
                             ]
                         )
 
@@ -565,8 +485,8 @@ struct PrivacyPolicyView: View {
                             title: "Third-party services",
                             items: [
                                 "MMMBites uses Firebase Authentication for email/password login.",
-                                "Cloud Firestore stores profiles, albums, memories, friend connections, and reactions.",
-                                "Firebase Storage stores photo files attached to memories and profiles.",
+                                "Cloud Firestore stores profiles, albums, memories, friend connections, and reactions. Profile photos are stored directly inside your Firestore user document.",
+                                "Firebase Storage stores photo files attached to memories and album covers.",
                                 "Google's privacy policy is available at https://policies.google.com/privacy."
                             ]
                         )
@@ -574,8 +494,9 @@ struct PrivacyPolicyView: View {
                         policySection(
                             title: "Sharing and retention",
                             items: [
-                                "A memory or album is private until you tag a friend or set it as shared.",
-                                "Removing a tag revokes that friend's access.",
+                                "Memories are shown only to friends you tag or to friends added to a shared album.",
+                                "Removing a friend from a shared album revokes their access to that album and the memories inside it.",
+                                "Unfriending someone also revokes any shared-album access between you and that person.",
                                 "We keep your data for as long as your account exists."
                             ]
                         )
@@ -585,7 +506,8 @@ struct PrivacyPolicyView: View {
                             items: [
                                 "You can view and edit memories, albums, profile fields, and friend connections inside the app.",
                                 "You can delete individual memories or albums from the relevant detail screen.",
-                                "You can delete your account from Settings. This permanently removes your profile, albums, memories, friend requests, and sign-in credentials.",
+                                "You can delete your account from Settings. Because this build is intended for in-person showcase testing, we apply a strict deletion policy: tapping delete removes your profile, the albums you created, the memories you captured, and friend requests involving you, and signs you out of the app.",
+                                "By design, when you delete your account the albums you created are removed as a whole. Meals that friends added inside those albums become inaccessible to everyone once the parent album is gone; a small inactive record may remain on our servers but cannot be viewed by any user. This lets testers walk up to the booth, sign up, try the app, and leave with nothing about them remaining accessible.",
                                 "For legal requests such as export or correction, contact lemonmint28@gmail.com."
                             ]
                         )
@@ -685,7 +607,7 @@ struct TermsOfServiceView: View {
                             Text("MMMBites Terms")
                                 .font(.clash(24, weight: .bold))
                                 .foregroundColor(AppColor.ink)
-                            Text("Effective date: June 10, 2026")
+                            Text("Effective date: June 17, 2026")
                                 .font(.clash(13, weight: .medium))
                                 .foregroundColor(AppColor.inkMuted)
                             Text("By using MMMBites, you agree to use the app respectfully and only upload content you have the right to save or share.")
@@ -1010,6 +932,120 @@ struct FeedbackSheet: View {
                 Spacer()
             }
             .padding(AppSpacing.xl)
+        }
+    }
+}
+
+// MARK: - Delete account reauth
+
+struct DeleteAccountReauthSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let onConfirmed: () async -> Void
+
+    @State private var password = ""
+    @State private var errorMessage: String?
+    @State private var isVerifying = false
+
+    var body: some View {
+        ZStack {
+            AppBackground(variant: .warm)
+
+            ScrollView {
+                VStack(spacing: AppSpacing.l) {
+                    VStack(spacing: 4) {
+                        Text("Confirm to delete")
+                            .font(.clash(22, weight: .semibold))
+                            .foregroundColor(AppColor.ink)
+                        Text("Enter your password to permanently delete your account.")
+                            .font(.clash(13, weight: .regular))
+                            .foregroundColor(AppColor.inkMuted)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.top, AppSpacing.l)
+
+                    AuthTextField(
+                        label: "Password",
+                        placeholder: "Your password",
+                        input: $password,
+                        type: .password,
+                        icon: "lock.fill"
+                    )
+
+                    if let errorMessage {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.clash(13, weight: .semibold))
+                            Text(errorMessage)
+                                .font(.clash(13, weight: .medium))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .foregroundColor(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: AppRadius.s, style: .continuous))
+                    }
+
+                    PrimaryButton(title: "Delete account", icon: "trash.fill", isLoading: isVerifying) {
+                        Task { await verifyAndDelete() }
+                    }
+                    .disabled(password.isEmpty || isVerifying)
+                    .opacity(password.isEmpty ? 0.55 : 1)
+
+                    Button {
+                        Haptics.tap()
+                        dismiss()
+                    } label: {
+                        Text("Cancel")
+                            .font(.clash(14, weight: .semibold))
+                            .foregroundColor(AppColor.inkMuted)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isVerifying)
+
+                    Spacer(minLength: AppSpacing.l)
+                }
+                .padding(AppSpacing.xl)
+            }
+        }
+    }
+
+    private func verifyAndDelete() async {
+        errorMessage = nil
+
+        guard let user = Auth.auth().currentUser, let email = user.email else {
+            errorMessage = "No email/password account is currently signed in."
+            return
+        }
+
+        isVerifying = true
+        defer { isVerifying = false }
+
+        do {
+            let credential = EmailAuthProvider.credential(withEmail: email, password: password)
+            try await user.reauthenticate(with: credential)
+        } catch let error as NSError {
+            Haptics.warning()
+            errorMessage = readableReauthError(error)
+            return
+        }
+
+        // Reauth succeeded — close this sheet first so any deletion error
+        // surfaces on Settings instead of being trapped behind this sheet.
+        dismiss()
+        await onConfirmed()
+    }
+
+    private func readableReauthError(_ error: NSError) -> String {
+        switch error.code {
+        case AuthErrorCode.wrongPassword.rawValue,
+             AuthErrorCode.invalidCredential.rawValue:
+            return "Incorrect password."
+        case AuthErrorCode.networkError.rawValue:
+            return "Network error. Check your connection and try again."
+        default:
+            return error.localizedDescription
         }
     }
 }

@@ -43,12 +43,20 @@ final class MemoriesViewModel: ObservableObject {
                         return
                     }
                     var memoryIDsNeedingFriendTagCleanup: [String] = []
+                    let currentUserID = Auth.auth().currentUser?.uid
                     let decoded: [Memory] = snapshot?.documents.compactMap { doc in
                         do {
                             var memory = try doc.data(as: Memory.self)
                             if !(memory.friendMemorableTags ?? []).isEmpty {
                                 memory.friendMemorableTags = []
-                                memoryIDsNeedingFriendTagCleanup.append(doc.documentID)
+                                // Firestore rules only allow the memory owner to
+                                // touch `friendMemorableTags`. Queueing a friend
+                                // memory here would fail the whole atomic batch
+                                // and pop "Couldn't sync memories" every time
+                                // the listener fired in a shared album.
+                                if memory.capturedById == currentUserID {
+                                    memoryIDsNeedingFriendTagCleanup.append(doc.documentID)
+                                }
                             }
                             // Restore locally cached photo bytes whenever the
                             // doc still lacks Storage URLs (slow/failed upload).
@@ -89,8 +97,10 @@ final class MemoriesViewModel: ObservableObject {
                 try await batch.commit()
             }
         } catch {
+            // Don't surface — this is housekeeping for a removed feature, not
+            // user-initiated. Surfacing it would pop "Couldn't sync memories"
+            // for issues the user can't act on.
             print("[MemoriesViewModel] friend tag cleanup error: \(error)")
-            errorMessage = error.localizedDescription
         }
     }
 
